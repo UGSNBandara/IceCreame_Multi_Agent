@@ -78,6 +78,8 @@ OrderTaker = Agent(
     {order}
     {discount}
     
+    If the customer dont know the exact  id of the ice cream or need a help to select the ice cream and asking for the special discount specificaly for the customer direct to the 
+    Mrketer agent. 
     """,
     tools=[add_order_db, get_icecream_by_id,add_customer, get_customer_by_Id, get_customer_by_tel_num, calculate_final_bill_tool, apply_specific_dicounts],
 )

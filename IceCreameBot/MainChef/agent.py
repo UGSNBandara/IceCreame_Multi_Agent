@@ -1,6 +1,7 @@
 from google.adk.agents import Agent 
 from .ComplainHandler.agent import ComplainHandler
 from .OrderTaker.agent import OrderTaker
+from .Marketer.agent import Marketer
 
 
 
@@ -42,7 +43,10 @@ MainChef = Agent(
     -apply the pre defined discounts to the orders
     -could explain about the availble ice creams by their names or code
 
+    3. Mareter : 
+    - help to user to select the ice cream.
+    - promote the ice creams
     """,
-    sub_agents=[ComplainHandler, OrderTaker],
+    sub_agents=[ComplainHandler, OrderTaker, Marketer],
     tools=[],
 )

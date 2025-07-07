@@ -18,14 +18,14 @@ async def get_icecream_by_id (ice_creame_id: int) -> dict | None:
             if cursor:
                 cursor.close()
                 
-async def get_icecream_by_flavour (flavout: str) -> list[dict]|dict:
+async def get_icecream_by_flavour (flavour: int) -> list[dict]|dict:
     """Get the ice cream by flavor"""
     
     async with get_db_connection() as conn:
         cursor = None
         try: 
             cursor = conn.cursor(dictionary=True)
-            cursor.execute("SELECT * FROM ice_creame WHERE flavor = (?)", (flavout,))
+            cursor.execute("SELECT * FROM ice_creame WHERE category_id = (?)", (flavour,))
             ice_creams = cursor.fetchall()
             return convert_unserializable_types_for_json(ice_creams) if ice_creams else []
         except mariadb.Error as e:

@@ -16,6 +16,7 @@ initial_state = {
     "telepone_number" : "",
     "address" : "",
     "mood" : "",
+    "age"  : None,
     "table" : "",
     "order_id" : None,
     "order" : [],
