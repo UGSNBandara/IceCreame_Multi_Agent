@@ -32,68 +32,22 @@ async def sayHello():
 @app.post("/tts/")
 async def tts(text: str = Form(...)):
     await asyncio.sleep(1)
-    
-    text_to_send = "Hi, how Can i help you today. Do you wana test new ice cream"
+
     engine = pyttsx3.init()
-    filename = f"tts_{uuid.uuid4()}.mp3"
-    engine.save_to_file(text_to_send, filename)
+    voices = engine.getProperty('voices')
+
+    # Try setting a female voice
+    for voice in voices:
+        if 'female' in voice.name.lower() or 'zira' in voice.name.lower():  # 'Zira' is a common female voice on Windows
+            engine.setProperty('voice', voice.id)
+            break
+
+    filename = f"audio_temp/tts_{uuid.uuid4()}.mp3"
+    engine.save_to_file(text, filename)
     engine.runAndWait()
 
-    
     with open(filename, "rb") as f:
-        audio_data = base64.b64encode(f.read()).decode("utf-8")
+        audio_data = f.read()
+    encoded = base64.b64encode(audio_data).decode("utf-8")
 
-    os.remove(filename)  # optional cleanup
-
-    return JSONResponse({
-        "text": text_to_send,
-        "audio_base64": audio_data
-    })
-
-# STT: Speech to Text
-'''
-@app.post("/stt/")
-async def stt(file: UploadFile = File(...)):
-    original_path = f"audio_{uuid.uuid4()}_{file.filename}"
-    wav_path = original_path.replace(".mp3", ".wav")
-
-    # Save uploaded audio file
-    with open(original_path, "wb") as f:
-        f.write(await file.read())
-
-    # Convert to mono WAV format if needed
-    try:
-        data, samplerate = sf.read(original_path)
-        sf.write(wav_path, data, samplerate, subtype='PCM_16')
-    except:
-        return JSONResponse(status_code=400, content={"error": "Audio conversion failed"})
-
-    # STT with Vosk
-    wf = wave.open(wav_path, "rb")
-    if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getframerate() not in [8000, 16000, 44100]:
-        return JSONResponse(status_code=400, content={"error": "Unsupported audio format"})
-
-    recognizer = KaldiRecognizer(vosk_model, wf.getframerate())
-    results = []
-
-    while True:
-        data = wf.readframes(4000)
-        if len(data) == 0:
-            break
-        if recognizer.AcceptWaveform(data):
-            result = recognizer.Result()
-            results.append(result)
-
-    final_result = recognizer.FinalResult()
-    results.append(final_result)
-
-    # Clean up
-    wf.close()
-    os.remove(original_path)
-    os.remove(wav_path)
-
-    # Extract only the final text
-    import json
-    transcript = " ".join([json.loads(r).get("text", "") for r in results])
-    return {"text": transcript.strip()}
-'''
+    return JSONResponse(content={"text": text, "audio_base64": encoded})
