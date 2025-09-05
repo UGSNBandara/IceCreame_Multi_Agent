@@ -2,3 +2,4 @@
 /tts_stt_api/vosk-model-small-en-us-0.15
 /tts_stt_api/audio_temp
 /.env
+__pycache__/
