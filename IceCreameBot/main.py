@@ -6,24 +6,21 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from utils import  call_agent_async
 
-from CRUD.db import initialize_db_pool, close_db_pool
+from CRUD.icecreamCrud import fetch_ice_creams, fetch_categories
+from Cache.IceCreamCache import catalog_cache
 
 load_dotenv()
 
 initial_state = {
-    "username" : "",
+    "customer_name" : None,
     "customer_id": None,
-    "telepone_number" : "",
-    "address" : "",
-    "mood" : "",
-    "age"  : None,
-    "table" : "",
+    "phone_number" : None,
+    "address" : None,
+    "mood" : None,
+    "age_group"  : None,
+    "table_number" : None,
     "order_id" : None,
-    "order" : [],
-    "discount" : None,
-    "special_discount" : {},
-    "type" : "",
-    "amount" : 0,
+    "order_type" : "",
 }
 
 session_service = InMemorySessionService()
@@ -31,7 +28,9 @@ session_service = InMemorySessionService()
 
 async def main_async():
     
-    initialize_db_pool()
+    ices = await fetch_ice_creams()
+    cats = await fetch_categories()
+    catalog_cache.load(ices, cats)
     
     APP_NAME = "Main Chef MoodScoope"
     USER_ID = "aiwithsuli"
@@ -41,9 +40,12 @@ async def main_async():
         user_id=USER_ID,
         state=initial_state,
     )
+    
     SESSION_ID = new_session.id
     print(f"Created new session: {SESSION_ID}")
 
+    new_session.state["session_id"] = SESSION_ID
+    
     runner = Runner(
         agent=MainChef,
         app_name=APP_NAME,
@@ -68,8 +70,6 @@ async def main_async():
     print("\nFinal Session State:")
     for key, value in final_session.state.items():
         print(f"{key}: {value}")
-
-    close_db_pool()
 
 def main():
     """Entry point for the application."""

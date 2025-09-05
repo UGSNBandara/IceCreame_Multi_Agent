@@ -1,50 +1,16 @@
-# db.py
-import asyncio
-import mariadb
-import sys
-from contextlib import asynccontextmanager
+# app/supabase_client.py
+import os
+from supabase import acreate_client, AsyncClient
 
-DB_POOL_CONFIG = {
-    'user': 'root',
-    'password': 'Deshani613',
-    'host': 'localhost',
-    'port': 3300,
-    'database': 'moodscoope',
-    'pool_size': 5, 
-    'pool_name': 'moodscoope_pool'
-}
-db_pool = None
+_supabase: AsyncClient | None = None
+SUPABASE_URL = "https://wicdvohhcwmhwlfahofy.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndpY2R2b2hoY3dtaHdsZmFob2Z5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY5ODU2NTYsImV4cCI6MjA3MjU2MTY1Nn0.oWDDpNgWzxUmWA4kmksqGInhWkqzoJv_BO1cjLreP5A"
 
-@asynccontextmanager
-def initialize_db_pool():
-    """Initializes the database connection pool."""
-    global db_pool
-    if db_pool is None:
-        try:
-            db_pool = mariadb.ConnectionPool(**DB_POOL_CONFIG)
-            print("MariaDB connection pool initialized successfully!")
-        except mariadb.Error as e:
-            print(f"Failed to initialize MariaDB connection pool: {e}", file=sys.stderr)
-            sys.exit(1) 
 
-@asynccontextmanager
-def close_db_pool():
-    """Closes all connections in the pool."""
-    global db_pool
-    if db_pool:
-        db_pool.close()
-        db_pool = None 
-        print("MariaDB connection pool closed.")
 
-@asynccontextmanager
-async def get_db_connection():
-    """Asynchronously gets a connection from the pool and yields it.
-       Ensures connection is returned to the pool after use (async context manager).
-    """
-    conn = None
-    try:
-        conn = db_pool.get_connection() 
-        yield conn
-    finally:
-        if conn:
-            conn.close() 
+async def get_supabase() -> AsyncClient:
+    """Singleton async client (uses env SUPABASE_URL / SUPABASE_KEY)."""
+    global _supabase
+    if _supabase is None:
+        _supabase = await acreate_client(SUPABASE_URL, SUPABASE_KEY)  # async client
+    return _supabase

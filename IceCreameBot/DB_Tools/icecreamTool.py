@@ -1,36 +1,60 @@
-from CRUD.icecreamCrud import get_icecream_by_id, get_icecream_by_flavour
+# DB_Tools/catalogTools.py
+from typing import Any, Dict, List
+# adjust the import if your path differs
+from Cache.IceCreamCache import catalog_cache, IceCreamDTO, CategoryDTO
 
-async def get_product_details_by_product_id(product_id:  int) -> dict:
-    """to get the product detils of ice cream by its product ID
+def _icecream_to_dict(x: IceCreamDTO) -> Dict[str, Any]:
+    return x.model_dump()
 
-    Args:
-        product_id (int): product id
+def _category_to_dict(x: CategoryDTO) -> Dict[str, Any]:
+    return x.model_dump()
 
-    Returns:
-        dict: if success dict contain ice cream details, if erro contain error details
-    """
-    response = await get_icecream_by_id(ice_creame_id=product_id)
-    if response:
-        return response
-    return {
-        "state" : "No ice cream product found by this ID",
-    }
-    
-    
-async def get_ice_creams_by_flavor_id(category_id: int) -> list[dict]|dict:
-    """to get the ice crreams by the flavor ID ( Category ID )
+
+async def get_icecream_flavors() -> List[Dict[str, Any]]:
+    """to get the ice cream flavors
 
     Args:
-        category_id (int): id of the category need to get ice creams
+        None
 
     Returns:
-        list[dict]|dict: list of the ice creams dictonaries in the given flavor, and if error occured error will be retured as dict
+        list[dict]: list of flavor dictionaries with keys id, name, description
     """
-    
-    response = await get_icecream_by_flavour(flavour=category_id)
-    if response:
-        return response
-    return {
-        "error" : "No output got from this function",
-    }
-    
+    try:
+        cat = catalog_cache.get()
+    except Exception:
+        return []
+    return [_category_to_dict(c) for c in cat.category_list()]
+
+
+async def get_icecreams_by_flavor_id(category_id: int) -> List[Dict[str, Any]]:
+    """to get the ice creams by flavor id
+
+    Args:
+        category_id (int): id of the flavor/category
+
+    Returns:
+        list[dict]: list of ice cream dictionaries under the given flavor. returns empty list if none found
+    """
+    try:
+        cat = catalog_cache.get()
+    except Exception:
+        return []
+    items = cat.by_category_id(category_id)
+    return [_icecream_to_dict(i) for i in items]
+
+
+async def get_icecream_by_id(icecream_id: int) -> Dict[str, Any]:
+    """to get the ice cream details by ice cream id
+
+    Args:
+        icecream_id (int): id of the ice cream
+
+    Returns:
+        dict: ice cream dictionary if present, if not found return {"state": "not_found"}
+    """
+    try:
+        cat = catalog_cache.get()
+    except Exception:
+        return {"state": "catalog_not_loaded"}
+    item = cat.by_icecream_id(icecream_id)
+    return _icecream_to_dict(item) if item else {"state": "not_found"}

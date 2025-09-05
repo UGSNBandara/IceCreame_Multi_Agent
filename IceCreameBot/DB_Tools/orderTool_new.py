@@ -3,7 +3,7 @@ from typing import List, Dict, Optional, Any
 from CRUD.OrderCrud import add_order as add_order_db, get_order_by_id as get_order_by_id_db
 
 async def add_order(
-    customer_id: int,
+    customer_id: Optional[int],
     items: List[Dict[str, Any]],
     dine_in: bool,
     address: Optional[str] = None,

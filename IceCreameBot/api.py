@@ -7,9 +7,7 @@ from MainChef.agent import MainChef
 from google.adk.runners import Runner
 from utils_for_api import  call_agent_async
 from session_store import user_sessions
-from CRUD.db import initialize_db_pool, close_db_pool
 
-initialize_db_pool()
 
 app = FastAPI()
 

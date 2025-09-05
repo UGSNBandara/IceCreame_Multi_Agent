@@ -1,71 +1,48 @@
-import mariadb
-from CRUD.db import get_db_connection 
-from CRUD.help import convert_unserializable_types_for_json
-import asyncio
+# app/crud_customers_sb.py
+from typing import Optional, Dict, Any
+from  CRUD.db import get_supabase
 
+async def add_customer(name: str, phone: str, address: Optional[str] = None) -> Dict[str, Any]:
+    sb = await get_supabase()
+    resp = await (
+        sb.table("customer")
+        .insert({"name": name, "phone": phone, "address": address})  
+        .execute()
+    )
+    return resp.data  # {"id", "name", "phone", "address"}
+    # Use UNIQUE(phone) to catch duplicates at DB level
 
-async def add_customer_db(customer_username: str, telepone_num: str, address: str) -> dict:
-    """Adds a new customer to the customers table"""
-    async with get_db_connection() as conn: 
-        cursor = None
-        order_id = None
-        try:
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO customers (customer_username, telepone_num, address) VALUES (?, ?, ?)",
-                (customer_username, telepone_num, address,)
-            )
-            conn.commit()
-            customer_id = cursor.lastrowid
-            print(f"CRUD: customer added successfully with ID: {customer_id}")
-            return {
-                "status" : "successfully added the customer",
-                "id" : customer_id,
-            }
-        except mariadb.Error as e:
-            conn.rollback()
-            print(f"CRUD: Error adding customer: {e}")
-            return {
-                "status" : "Fail to add the order",
-            }
-        finally:
-            if cursor:
-                cursor.close()
+async def get_customer_by_phone(phone: str) -> Optional[Dict[str, Any]]:
+    sb = await get_supabase()
+    resp = await (
+        sb.table("customer")
+        .select("id,name,phone,address")
+        .eq("phone", phone)
+        .limit(1)
+        .single()        # or .maybe_single() if you want None when not found
+        .execute()
+    )
+    return resp.data  # None or dict
+    # note: .single() / .maybe_single() are documented helpers. :contentReference[oaicite:2]{index=2}
 
-async def get_customer_by_id(customer_id: int) -> dict | None:
-    """Retrieves customer details by the id"""
-    async with get_db_connection() as conn:
-        cursor = None
-        cursor = conn.cursor(dictionary=True)
-        try:
-            cursor.execute("SELECT * FROM customers WHERE customer_id = (?)", (customer_id,))
-            customer = cursor.fetchone()
-            return convert_unserializable_types_for_json(customer) if customer else None
-        except mariadb.Error as e:
-            print(f"CRUD: Error retrieving order by id: {e}")
-            return {
-                "state" : 404,
-                "error" : e,
-            }
-        finally:
-            if cursor:
-                cursor.close()
+async def update_customer(
+    customer_id: int,
+    name: Optional[str] = None,
+    phone: Optional[str] = None,
+    address: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    patch = {k: v for k, v in {"name": name, "phone": phone, "address": address}.items() if v is not None}
+    if not patch:
+        # Fetch current row
+        sb = await get_supabase()
+        resp = await sb.table("customer").select("id,name,phone,address").eq("id", customer_id).single().execute()
+        return resp.data
 
-async def get_customer_by_telepone_num(telepone_num: str) -> dict | None:
-    """Retrieves customer details by the telepone number"""
-    async with get_db_connection() as conn:
-        cursor = None
-        cursor = conn.cursor(dictionary=True)
-        try:
-            cursor.execute("SELECT * FROM customers WHERE telepone_num = (?)", (telepone_num,))
-            customer = cursor.fetchone()
-            return convert_unserializable_types_for_json(customer) if customer else None
-        except mariadb.Error as e:
-            print(f"CRUD: Error retrieving order by telepone num: {e}")
-            return {
-                "error" : e
-            }
-        finally:
-            if cursor:
-                cursor.close()
-                
+    sb = await get_supabase()
+    resp = await (
+        sb.table("customer")
+        .update(patch)
+        .eq("id", customer_id)
+        .execute()
+    )
+    return resp.data  # None if not found (depending on version/config)

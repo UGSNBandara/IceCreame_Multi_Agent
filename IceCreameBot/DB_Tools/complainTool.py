@@ -1,61 +1,21 @@
 from typing import Optional
-from CRUD.complainCrud import add_complain_db, get_complain_by_complain_id, get_complains_by_order_id
-
-async def add_complain(order_id: int, description: str, expected_resolution: Optional[str]) -> dict:
-    """to add a complain to the db
-
-    Args:
-        order_id (int): id of the order going to complain
-        description (str): small description about the compalin
-        expected_resolution (Optional[str]): expected resolution by the customer, this is optional if customer expect nothin put as None
-
-    Returns:
-        dict: dictionary contain the state of the operation. either success or error
-    """
-    response = await add_complain_db(order_id=order_id, description=description, expected_resolution=expected_resolution)
-    if response:
-        return {
-            "state" : "success",
-            "complain_id" : response,
-        }
-    else:
-        return {
-        "state" : "error_occured",
-        }
+from CRUD.complainCrud import add_complain
 
 
-async def get_complain_by_complainid(complain_id: int) -> dict:
-    """To get the complain by complain ID
+async def add_complain_to_db(description: str) -> dict:
+    """to add the complain to the database
 
     Args:
-        complain_id (int): complain Id
+        description (str): description of the complain
 
     Returns:
-        dict: response, if success the complain dict, otherwise error dict
+        dict: result of the operation. if succeede retun the id of the complain. 
     """
-    
-    response = await get_complain_by_complain_id(complain_id=complain_id)
-    if response:
-        return response
-    
-    return {
-        "state" : "No complain found by this complain id"
-    }
-    
-
-async def get_complain_by_orderid(order_id: int) -> list[dict]|dict:
-    """to get the complains for a order by order Id
-
-    Args:
-        order_id (int): order id
-
-    Returns:
-        list[dict]|dict: list of dict if complains retrived correctly, if no complain empty list. if error occured dictionary which contain the error
-    """
-    response = await get_complains_by_order_id(order_id=order_id)
-    if response:
-        return response
-
-    return {
-        "state" : "No complain found by this order id"
-    }
+    desc = (description or "").strip()
+    if not desc:
+        return {"state": "error_occured", "error": "description_empty"}
+    try:
+        new_id = await add_complain(desc)
+        return {"state": "success", "complain_id": int(new_id)}
+    except Exception as err:
+        return {"state": "error_occured", "error":"Error occured, please try again later or contact support."}
