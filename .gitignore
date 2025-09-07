@@ -4,3 +4,5 @@
 /IceCreameBot/.env
 **/__pycache__/
 *.pyc
+**.pyc
+***.pyc

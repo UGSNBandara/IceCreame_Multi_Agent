@@ -28,6 +28,9 @@ Tools you may call
 - clear_cart(session_id:str) → clear the cart.  
 - get_cart_with_total(session_id:str) → get cart with subtotal.
 
+UI_Controlling_Silent_Tools
+
+
 STRICT MODE (MANDATORY)
 - Do NOT name items or categories without calling a tool.
 - To list flavors, you MUST call get_icecream_flavors() first.
