@@ -17,6 +17,8 @@ from utils_for_api import call_agent_async
 from CRUD.icecreamCrud import fetch_ice_creams, fetch_categories
 from Cache.IceCreamCache import catalog_cache
 
+from DB_Tools.menustateTool import get_menu_state
+
 from tts_stt_api.tts_helper import tts_async
 
 load_dotenv()
@@ -44,15 +46,15 @@ _user_sessions_lock = asyncio.Lock()
 
 # ---- Initial state ----
 INITIAL_STATE = {
-    "customer_name": None,
+    "customer_name" : None,
     "customer_id": None,
-    "phone_number": None,
-    "address": None,
-    "mood": None,
-    "age_group": None,
-    "table_number": None,
-    "order_id": None,
-    "order_type": ""
+    "phone_number" : None,
+    "address" : None,
+    "mood" : None,
+    "age_group"  : None,
+    "table_number" : None,
+    "order_id" : None,
+    "order_type" : "",
 }
 
 # ---- Models ----
@@ -89,7 +91,6 @@ async def _get_or_create_session(user_id: str, session_id: Optional[str], restar
             new = session_service.create_session(
                 app_name=APP_NAME, user_id=user_id, state=INITIAL_STATE.copy()
             )
-            new.state["session_id"] = new.id
             user_sessions[user_id] = new.id
             return new.id
 
@@ -98,7 +99,6 @@ async def _get_or_create_session(user_id: str, session_id: Optional[str], restar
             new = session_service.create_session(
                 app_name=APP_NAME, user_id=user_id, state=INITIAL_STATE.copy()
             )
-            new.state["session_id"] = new.id
             user_sessions[user_id] = new.id
             return new.id
 
@@ -109,6 +109,7 @@ async def _get_or_create_session(user_id: str, session_id: Optional[str], restar
             return session_id
 
         return user_sessions[user_id]
+
 
 # ---- Main endpoint ----
 @app.post("/agent/", response_model=AgentResponse)
@@ -132,3 +133,11 @@ async def interact_with_agent(req: AgentRequest):
             result.update({"audio_base64": None, "audio_mime": None})
 
     return JSONResponse(result)
+
+
+
+@app.get("/menu/index/{session_id}", response_class=JSONResponse)
+async def get_menu_index(session_id: str):
+    indexx = await get_menu_state(session_id)
+    
+    return JSONResponse({"index": indexx})

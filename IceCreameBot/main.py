@@ -21,6 +21,7 @@ initial_state = {
     "table_number" : None,
     "order_id" : None,
     "order_type" : "",
+    "session_id": None  # filled in later
 }
 
 session_service = InMemorySessionService()

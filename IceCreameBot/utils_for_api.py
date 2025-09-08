@@ -1,5 +1,15 @@
 from datetime import datetime
 from google.genai import types
+from typing import Callable, Dict, Any
+from Context.SessionContext import CURRENT_SID
+
+
+
+def bind_sid(fn: Callable[..., Any], sid: str) -> Callable[..., Any]:
+    """Return a callable that injects sid as the first argument (or keyword)."""
+    async def _bound(*args, **kwargs):
+        return await fn(sid, *args, **kwargs)
+    return _bound
 
 
 async def process_agent_response(event):
@@ -36,8 +46,9 @@ async def call_agent_async(runner, user_id, session_id, query):
     
     content = types.Content(role="user", parts=[types.Part(text=query)])
 
-    final_response_text = None
+    token = CURRENT_SID.set(session_id)
     
+    final_response_text = None
     try:
         async for event in runner.run_async(
             user_id=user_id, session_id=session_id, new_message=content
@@ -48,5 +59,7 @@ async def call_agent_async(runner, user_id, session_id, query):
                 final_response_text = response
     except Exception as e:
         print(f"ERROR during agent run: {e}")
-
+    finally:       
+        CURRENT_SID.reset(token)
+        
     return final_response_text

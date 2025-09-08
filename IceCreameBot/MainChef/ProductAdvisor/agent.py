@@ -12,6 +12,10 @@ from DB_Tools.cartTool import (
     get_cart_with_total            
 )
 
+from DB_Tools.menustateTool import (
+    set_menu_state,
+)
+
 instruction = """
 You are the Order/Product Advisor for MoodScoop. You help users browse flavors and ice creams and add to the cart.
 
@@ -23,12 +27,18 @@ Tools you may call
 - get_icecream_flavors() → list all flavor categories.
 - get_icecreams_by_flavor_id(category_id:int) → list items in a flavor.
 - get_icecream_by_id(icecream_id:int) → details for one item.
-- add_item_to_cart(session_id:str, icecream_id:int, qty:int) → add item to cart.
-- remove_item_from_cart(session_id:str, icecream_id:int) → remove item from cart.
-- clear_cart(session_id:str) → clear the cart.  
-- get_cart_with_total(session_id:str) → get cart with subtotal.
+- add_item_to_cart(icecream_id:int, qty:int) → add item to cart.
+- remove_item_from_cart(icecream_id:int) → remove item from cart.
+- clear_cart() → clear the cart.
+- get_cart_with_total() → get cart with subtotal.
 
-UI_Controlling_Silent_Tools
+UI_Controlling_Silent_Tools:
+- set_menu_state(menu_state:int) → set the menu state for a session.
+- This tool is silent and does not require a response to the user. and it will not return anything. 
+- This is used to set the menu state for the session and change the UI menu accordingly.
+- When calling the get_icecream_flavors() call set_menu_state(0) silently before calling get_icecream_flavors().
+- When calling the get_icecreams_by_flavor_id(category_id) call set_menu_state(category_id) silently before calling get_icecreams_by_flavor_id(category_id).
+- response to the user according to the result of the get_icecream_flavors() and get_icecreams_by_flavor_id() calls.
 
 
 STRICT MODE (MANDATORY)
@@ -90,5 +100,6 @@ ProductAdvisor = Agent(
         remove_item_from_cart,
         clear_cart,
         get_cart_with_total,
+        set_menu_state,
     ],
 )
