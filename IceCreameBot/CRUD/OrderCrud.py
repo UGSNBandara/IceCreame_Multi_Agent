@@ -3,9 +3,9 @@ from typing import List, Dict, Optional, Any
 from CRUD.db import get_supabase
 
 async def add_order(
-    customer_id: Optional[int],
     items: List[Dict[str, Any]],
     dine_in: bool,
+    customer_id: Optional[int] = None,
     address: Optional[str] = None,
     phone: Optional[str] = None,
     table_number: Optional[int] = None,

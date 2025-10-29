@@ -3,9 +3,9 @@ from typing import List, Dict, Optional, Any
 from CRUD.OrderCrud import add_order as add_order_db, get_order_by_id as get_order_by_id_db
 
 async def add_order(
-    customer_id: Optional[int],
     items: List[Dict[str, Any]],
     dine_in: bool,
+    customer_id: Optional[int] = None, 
     address: Optional[str] = None,
     phone: Optional[str] = None,
     table_number: Optional[int] = None,
@@ -13,9 +13,9 @@ async def add_order(
     """to add a new order
 
     Args:
-        customer_id (int): id of the customer placing the order
         items (List[Dict[str, Any]]): order items as a list of dictionaries (will be saved as json)
         dine_in (bool): True for dine-in, False for take-away
+        customer_id (Optional[int]): id of the customer placing the order, No need for guest mode
         address (Optional[str]): delivery address (for take-away; optional)
         phone (Optional[str]): customer phone (optional)
         table_number (Optional[int]): table number (for dine-in; optional)
@@ -26,9 +26,9 @@ async def add_order(
     """
     try:
         row = await add_order_db(
-            customer_id=customer_id,
             items=items,
             dine_in=dine_in,
+            customer_id=customer_id,
             address=address,
             phone=phone,
             table_number=table_number,
