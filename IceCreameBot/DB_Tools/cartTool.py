@@ -4,23 +4,23 @@ from State.CartStore import cart_store
 from Cache.Cart import Cart, CatalogNotLoaded, ItemNotFound
 from Context.SessionContext import CURRENT_SID
 
-async def add_item_to_cart(icecream_id: int, qty: int) -> Dict[str, Any]:
-    """to add an ice cream item to the session cart
+async def add_item_to_cart(item_id: int, qty: int) -> Dict[str, Any]:
+    """Add a menu item to the session cart.
 
     Args:
-        icecream_id (int): id of the ice cream
+        item_id (int): id of the item
         qty (int): quantity to add (default 1)
 
     Returns:
         dict: {"state":"success","cart":[...]} on success.
-              {"state":"catalog_not_loaded"} if catalog not in RAM.
-              {"state":"not_found"} if item id not in catalog.
+              {"state":"catalog_not_loaded"} if menu not in RAM.
+              {"state":"not_found"} if item id not in menu.
     """
     session_id = CURRENT_SID.get()
     lines = await cart_store.get(session_id)
     cart = Cart(lines)
     try:
-        cart.add(icecream_id, qty)
+        cart.add(item_id, qty)
     except CatalogNotLoaded:
         return {"state": "catalog_not_loaded"}
     except ItemNotFound:
@@ -31,11 +31,8 @@ async def add_item_to_cart(icecream_id: int, qty: int) -> Dict[str, Any]:
     return {"state": "success", "cart": snapshot}
 
 
-async def remove_item_from_cart(icecream_id: int) -> Dict[str, Any]:
-    """to remove an ice cream item from the session cart by id
-
-    Args:
-        icecream_id (int): id of the ice cream
+async def remove_item_from_cart(item_id: int) -> Dict[str, Any]:
+    """Remove a menu item from the session cart by id.
 
     Returns:
         dict: {"state":"success","cart":[...]} (no-op if item not present)
@@ -43,35 +40,21 @@ async def remove_item_from_cart(icecream_id: int) -> Dict[str, Any]:
     session_id = CURRENT_SID.get()
     lines = await cart_store.get(session_id)
     cart = Cart(lines)
-    cart.remove(icecream_id)
+    cart.remove(item_id)
     snapshot = cart.to_lines()
     await cart_store.put(session_id, snapshot)
     return {"state": "success", "cart": snapshot}
 
 
 async def clear_cart() -> Dict[str, Any]:
-    """to clear the session cart
-
-        Args: None
-
-    Returns:
-        dict: {"state":"cleared"}
-    """
+    """Clear the session cart."""
     session_id = CURRENT_SID.get()
     await cart_store.clear(session_id)
     return {"state": "cleared"}
 
 
-
 async def get_cart_with_total() -> Dict[str, Any]:
-    """to get the current cart with the subtotal by session id
-
-    Args:
-        session_id (str): id of the session
-
-    Returns:
-        dict: {"cart": [...], "subtotal": ...}
-    """
+    """Get the current cart with subtotal for the session."""
     session_id = CURRENT_SID.get()
     snap = Cart(await cart_store.get(session_id)).to_lines()
     subtotal = round(sum(l["amount"] for l in snap), 2)

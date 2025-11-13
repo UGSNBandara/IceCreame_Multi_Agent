@@ -1,48 +1,59 @@
-# app/crud_customers_sb.py
 from typing import Optional, Dict, Any
-from  CRUD.db import get_supabase
+from CRUD.db import get_db
+from pymongo.errors import DuplicateKeyError
 
-async def add_customer(name: str, phone: str, address: Optional[str] = None) -> Dict[str, Any]:
-    sb = await get_supabase()
-    resp = await (
-        sb.table("customer")
-        .insert({"name": name, "phone": phone, "address": address})  
-        .execute()
-    )
-    return resp.data  # {"id", "name", "phone", "address"}
-    # Use UNIQUE(phone) to catch duplicates at DB level
+
+async def _ensure_indexes():
+    db = await get_db()
+    # Ensure unique index on phone
+    await db["customer"].create_index("phone", unique=True, name="uniq_phone")
+
+
+async def add_customer(name: str, phone: str) -> Dict[str, Any]:
+    await _ensure_indexes()
+    db = await get_db()
+    doc = {"name": name, "phone": phone}
+    try:
+        res = await db["customer"].insert_one(doc)
+    except DuplicateKeyError:
+        # Signal to tool layer in a stable way
+        raise ValueError("phone_already_exists")
+
+    created = await db["customer"].find_one({"_id": res.inserted_id})
+    # normalize id field for consumers
+    out = {"id": str(created["_id"]), "name": created.get("name"), "phone": created.get("phone")}
+    return out
+
 
 async def get_customer_by_phone(phone: str) -> Optional[Dict[str, Any]]:
-    sb = await get_supabase()
-    resp = await (
-        sb.table("customer")
-        .select("id,name,phone,address")
-        .eq("phone", phone)
-        .limit(1)
-        .single()        # or .maybe_single() if you want None when not found
-        .execute()
-    )
-    return resp.data  # None or dict
-    # note: .single() / .maybe_single() are documented helpers. :contentReference[oaicite:2]{index=2}
+    db = await get_db()
+    doc = await db["customer"].find_one({"phone": phone})
+    if not doc:
+        return None
+    return {"id": str(doc["_id"]), "name": doc.get("name"), "phone": doc.get("phone")}
+
 
 async def update_customer(
-    customer_id: int,
+    customer_id: str,
     name: Optional[str] = None,
     phone: Optional[str] = None,
-    address: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
-    patch = {k: v for k, v in {"name": name, "phone": phone, "address": address}.items() if v is not None}
-    if not patch:
-        # Fetch current row
-        sb = await get_supabase()
-        resp = await sb.table("customer").select("id,name,phone,address").eq("id", customer_id).single().execute()
-        return resp.data
+    from bson import ObjectId
 
-    sb = await get_supabase()
-    resp = await (
-        sb.table("customer")
-        .update(patch)
-        .eq("id", customer_id)
-        .execute()
-    )
-    return resp.data  # None if not found (depending on version/config)
+    patch = {k: v for k, v in {"name": name, "phone": phone}.items() if v is not None}
+    db = await get_db()
+    try:
+        oid = ObjectId(customer_id)
+    except Exception:
+        return None
+    if not patch:
+        doc = await db["customer"].find_one({"_id": oid})
+        return {"id": str(doc["_id"]), "name": doc.get("name"), "phone": doc.get("phone")} if doc else None
+
+    try:
+        await db["customer"].update_one({"_id": oid}, {"$set": patch})
+    except DuplicateKeyError:
+        raise ValueError("phone_already_exists")
+
+    doc = await db["customer"].find_one({"_id": oid})
+    return {"id": str(doc["_id"]), "name": doc.get("name"), "phone": doc.get("phone")} if doc else None

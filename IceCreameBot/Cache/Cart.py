@@ -2,7 +2,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
-from Cache.IceCreamCache import catalog_cache  # uses your RAM catalog
+from Cache.MenuCache import menu_cache  # uses your RAM menu
 
 @dataclass
 class CartLine:
@@ -42,14 +42,14 @@ class Cart:
         return -1
 
     @staticmethod
-    def _resolve_from_catalog(icecream_id: int) -> Dict[str, Any]:
+    def _resolve_from_catalog(item_id: int) -> Dict[str, Any]:
         # raises CatalogNotLoaded or ItemNotFound
         try:
-            cat = catalog_cache.get()
+            cat = menu_cache.get()
         except Exception:
             raise CatalogNotLoaded()
 
-        dto = cat.by_icecream_id(int(icecream_id))
+        dto = cat.by_item_id(int(item_id))
         if not dto:
             raise ItemNotFound()
 
@@ -59,23 +59,23 @@ class Cart:
         }
 
     # ----- operations -----
-    def add(self, icecream_id: int, qty: int = 1) -> None:
+    def add(self, item_id: int, qty: int = 1) -> None:
         """Add quantity; creates line if missing. qty<=0 is a no-op."""
         if qty <= 0:
             return
-        prod = self._resolve_from_catalog(icecream_id)
-        idx = self._index(icecream_id)
+        prod = self._resolve_from_catalog(item_id)
+        idx = self._index(item_id)
         if idx == -1:
-            self._lines.append(CartLine(code=int(icecream_id), name=prod["name"], qty=int(qty), price=prod["price"]))
+            self._lines.append(CartLine(code=int(item_id), name=prod["name"], qty=int(qty), price=prod["price"]))
         else:
             line = self._lines[idx]
             line.qty = int(line.qty) + int(qty)
             line.price = prod["price"]  # authoritative
             line.amount = round(line.qty * line.price, 2)
 
-    def remove(self, icecream_id: int) -> None:
+    def remove(self, item_id: int) -> None:
         """Remove line if present (no error if absent)."""
-        idx = self._index(icecream_id)
+        idx = self._index(item_id)
         if idx != -1:
             self._lines.pop(idx)
 

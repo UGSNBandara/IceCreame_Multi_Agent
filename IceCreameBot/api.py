@@ -11,19 +11,19 @@ from dotenv import load_dotenv
 from google.adk.sessions import InMemorySessionService
 from google.adk.runners import Runner
 
-from MainChef.agent import MainChef
+from MainChef.CoffeeAgent.agent import CoffeeShopAgent
 from utils_for_api import call_agent_async
 
-from CRUD.icecreamCrud import fetch_ice_creams, fetch_categories
-from Cache.IceCreamCache import catalog_cache
+from CRUD.menuCrud import fetch_menu_items
+from Cache.MenuCache import menu_cache
 
 from DB_Tools.menustateTool import get_menu_state
 
-from tts_stt_api.tts_helper import tts_async
+from tts_stt_api.tts_helper import tts_async, tts_save_to_file
 
 load_dotenv()
 
-APP_NAME = "Main Chef MoodScoope"
+APP_NAME = "Coffee Shop Agent"
 
 app = FastAPI(title=APP_NAME)
 
@@ -38,7 +38,7 @@ app.add_middleware(
 
 # ---- ADK infra (singletons) ----
 session_service = InMemorySessionService()
-runner = Runner(agent=MainChef, app_name=APP_NAME, session_service=session_service)
+runner = Runner(agent=CoffeeShopAgent, app_name=APP_NAME, session_service=session_service)
 
 # per-user map -> session_id (simple in-RAM)
 user_sessions: dict[str, str] = {}
@@ -49,12 +49,9 @@ INITIAL_STATE = {
     "customer_name" : None,
     "customer_id": None,
     "phone_number" : None,
-    "address" : None,
     "mood" : None,
     "age_group"  : None,
-    "table_number" : None,
     "order_id" : None,
-    "order_type" : "",
 }
 
 # ---- Models ----
@@ -64,6 +61,7 @@ class AgentRequest(BaseModel):
     restart: bool = False
     session_id: Optional[str] = None
     speak: bool = False  # <-- only toggle
+    voice: str = "en-US-JennyNeural"  # <-- voice selection
 
 class AgentResponse(BaseModel):
     response: str
@@ -71,13 +69,12 @@ class AgentResponse(BaseModel):
     audio_base64: Optional[str] = None
     audio_mime: Optional[str] = None
     
-# ---- Lifespan: load catalog once ----
+# ---- Lifespan: load menu once ----
 @app.on_event("startup")
 async def _startup():
-    ices = await fetch_ice_creams()
-    cats = await fetch_categories()
-    catalog_cache.load(ices, cats)
-    print(f"Catalog loaded: {len(ices)} items / {len(cats)} categories")
+    items = await fetch_menu_items()
+    menu_cache.load(items)
+    print(f"Menu loaded: {len(items)} items")
 
 @app.get("/health")
 async def health():
@@ -126,7 +123,7 @@ async def interact_with_agent(req: AgentRequest):
 
     if req.speak:
         try:
-            audio_b64, mime = await tts_async(reply_text or "")
+            audio_b64, mime = await tts_async(reply_text or "", req.voice)
             result.update({"audio_base64": audio_b64, "audio_mime": mime})
         except Exception:
             # If TTS fails, still return text
@@ -134,6 +131,41 @@ async def interact_with_agent(req: AgentRequest):
 
     return JSONResponse(result)
 
+
+
+@app.post("/generate-voice/")
+async def generate_voice(text: str, filename: str, voice: str = "en-US-JennyNeural"):
+    """
+    Generate voice from text and save to Voices folder.
+    
+    Args:
+        text: The text to convert to speech
+        filename: The filename to save as (without extension)
+        voice: The voice to use (default: en-US-JennyNeural)
+    
+    Returns:
+        JSON with success status and file path
+    """
+    try:
+        if not text.strip():
+            raise HTTPException(status_code=400, detail="Text cannot be empty")
+        
+        if not filename.strip():
+            raise HTTPException(status_code=400, detail="Filename cannot be empty")
+        
+        # Generate and save voice
+        filepath = await tts_save_to_file(text, filename, voice)
+        
+        return JSONResponse({
+            "success": True,
+            "message": "Voice generated successfully",
+            "filepath": filepath,
+            "filename": f"{filename}.mp3",
+            "voice": voice
+        })
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate voice: {str(e)}")
 
 
 @app.get("/menu/index/{session_id}", response_class=JSONResponse)

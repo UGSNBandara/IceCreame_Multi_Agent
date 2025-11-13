@@ -1,26 +1,23 @@
 import asyncio
 
 from dotenv import load_dotenv
-from MainChef.agent import MainChef  
+from MainChef.CoffeeAgent.agent import CoffeeShopAgent
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
-from utils import  call_agent_async
+from utils_for_api import call_agent_async
 
-from CRUD.icecreamCrud import fetch_ice_creams, fetch_categories
-from Cache.IceCreamCache import catalog_cache
+from CRUD.menuCrud import fetch_menu_items
+from Cache.MenuCache import menu_cache
 
 load_dotenv()
 
 initial_state = {
-    "customer_name" : None,
+    "customer_name": None,
     "customer_id": None,
-    "phone_number" : None,
-    "address" : None,
-    "mood" : None,
-    "age_group"  : None,
-    "table_number" : None,
-    "order_id" : None,
-    "order_type" : "",
+    "phone_number": None,
+    "mood": None,
+    "age_group": None,
+    "order_id": None,
     "session_id": None  # filled in later
 }
 
@@ -28,12 +25,11 @@ session_service = InMemorySessionService()
 
 
 async def main_async():
-    
-    ices = await fetch_ice_creams()
-    cats = await fetch_categories()
-    catalog_cache.load(ices, cats)
-    
-    APP_NAME = "Main Chef MoodScoope"
+
+    items = await fetch_menu_items()
+    menu_cache.load(items)
+
+    APP_NAME = "Coffee Shop Agent"
     USER_ID = "aiwithsuli"
 
     new_session = session_service.create_session(
@@ -41,19 +37,19 @@ async def main_async():
         user_id=USER_ID,
         state=initial_state,
     )
-    
+
     SESSION_ID = new_session.id
     print(f"Created new session: {SESSION_ID}")
 
     new_session.state["session_id"] = SESSION_ID
-    
+
     runner = Runner(
-        agent=MainChef,
+        agent=CoffeeShopAgent,
         app_name=APP_NAME,
         session_service=session_service,
     )
-    
-    print("\nWelcome to Customer Service Chat!")
+
+    print("\nWelcome to Coffee Shop Chat!")
     print("Type 'exit' or 'quit' to end the conversation.\n")
 
     while True:

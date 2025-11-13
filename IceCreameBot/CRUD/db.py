@@ -1,16 +1,43 @@
-# app/supabase_client.py
+"""
+MongoDB async client (Motor) singleton.
+
+Env vars:
+  - MONGODB_URI: full Mongo connection string
+  - MONGODB_DB:  database name to use
+
+Usage:
+  db = await get_db()
+  coll = db["orders"]
+  await coll.insert_one({...})
+"""
+from __future__ import annotations
+
 import os
-from supabase import acreate_client, AsyncClient
+from typing import Optional
+from dotenv import load_dotenv
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
-_supabase: AsyncClient | None = None
-SUPABASE_URL = "https://wicdvohhcwmhwlfahofy.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndpY2R2b2hoY3dtaHdsZmFob2Z5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY5ODU2NTYsImV4cCI6MjA3MjU2MTY1Nn0.oWDDpNgWzxUmWA4kmksqGInhWkqzoJv_BO1cjLreP5A"
+_client: Optional[AsyncIOMotorClient] = None
+_db: Optional[AsyncIOMotorDatabase] = None
 
 
+async def get_db() -> AsyncIOMotorDatabase:
+    """Return a singleton AsyncIOMotorDatabase based on env config."""
+    global _client, _db
+    if _db is not None:
+        return _db
 
-async def get_supabase() -> AsyncClient:
-    """Singleton async client (uses env SUPABASE_URL / SUPABASE_KEY)."""
-    global _supabase
-    if _supabase is None:
-        _supabase = await acreate_client(SUPABASE_URL, SUPABASE_KEY)  # async client
-    return _supabase
+    load_dotenv()
+    uri = os.getenv("MONGODB_URI")
+    dbname = os.getenv("MONGODB_DB")
+    if not uri or not dbname:
+        raise RuntimeError("MONGODB_URI and MONGODB_DB must be set in environment")
+
+    _client = AsyncIOMotorClient(uri)
+    _db = _client[dbname]
+    return _db
+
+
+async def get_collection(name: str):
+    db = await get_db()
+    return db[name]

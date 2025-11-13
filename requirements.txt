@@ -9,3 +9,5 @@ uvicorn
 pyttsx3 
 vosk 
 soundfile
+motor==3.6.0
+edge-tts==6.1.14
