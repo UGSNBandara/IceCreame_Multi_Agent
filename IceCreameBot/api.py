@@ -18,7 +18,8 @@ from CRUD.menuCrud import fetch_menu_items, add_menu_item, update_menu_item, del
 from Cache.MenuCache import menu_cache
 
 from DB_Tools.menustateTool import get_menu_state
-from CRUD.OrderCrud import list_orders, update_order_status, OrderStatus
+from CRUD.OrderCrud import list_orders, update_order_status, OrderStatus, get_order_by_id
+from CRUD.db import init_db, seed_menu_if_empty
 
 from tts_stt_api.tts_helper import tts_async, tts_save_to_file
 
@@ -86,9 +87,11 @@ class OrderStatusUpdate(BaseModel):
 # ---- Lifespan: load menu once ----
 @app.on_event("startup")
 async def _startup():
+    await init_db()
+    await seed_menu_if_empty()
     items = await fetch_menu_items()
     menu_cache.load(items)
-    print(f"Menu loaded: {len(items)} items")
+    print(f"SQLite initialized. Menu loaded: {len(items)} items")
 
 @app.get("/health")
 async def health():
@@ -248,3 +251,15 @@ async def update_order_status_endpoint(order_id: str, payload: OrderStatusUpdate
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update order status: {e}")
+
+@app.get("/orders/{order_id}", response_class=JSONResponse)
+async def get_order(order_id: str):
+    try:
+        order = await get_order_by_id(order_id)
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found")
+        return JSONResponse(order)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch order: {e}")

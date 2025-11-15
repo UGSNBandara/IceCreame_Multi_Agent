@@ -1,43 +1,75 @@
+"""SQLite async DB layer (replaces previous Mongo layer).
+
+Env vars (optional):
+  SQLITE_DB_PATH: path to sqlite file (default: icecream.db)
+
+Tables:
+  menu(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, description TEXT, price REAL)
+  orders(id INTEGER PRIMARY KEY AUTOINCREMENT, customer_name TEXT, items TEXT, total REAL,
+     status TEXT, created_at TEXT)
+
+Note: WAL mode enabled for better concurrent read/write behavior.
 """
-MongoDB async client (Motor) singleton.
-
-Env vars:
-  - MONGODB_URI: full Mongo connection string
-  - MONGODB_DB:  database name to use
-
-Usage:
-  db = await get_db()
-  coll = db["orders"]
-  await coll.insert_one({...})
-"""
-from __future__ import annotations
-
 import os
-from typing import Optional
+import json
+import aiosqlite
 from dotenv import load_dotenv
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
-_client: Optional[AsyncIOMotorClient] = None
-_db: Optional[AsyncIOMotorDatabase] = None
+load_dotenv()
 
+DB_PATH = os.getenv("SQLITE_DB_PATH", "coffee.db")
 
-async def get_db() -> AsyncIOMotorDatabase:
-    """Return a singleton AsyncIOMotorDatabase based on env config."""
-    global _client, _db
-    if _db is not None:
-        return _db
+_conn: aiosqlite.Connection | None = None
 
-    load_dotenv()
-    uri = os.getenv("MONGODB_URI")
-    dbname = os.getenv("MONGODB_DB")
-    if not uri or not dbname:
-        raise RuntimeError("MONGODB_URI and MONGODB_DB must be set in environment")
+async def get_db() -> aiosqlite.Connection:
+  global _conn
+  if _conn is None:
+    _conn = await aiosqlite.connect(DB_PATH)
+    await _conn.execute("PRAGMA journal_mode=WAL;")
+    _conn.row_factory = lambda cursor, row: {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
+  return _conn
 
-    _client = AsyncIOMotorClient(uri)
-    _db = _client[dbname]
-    return _db
+async def init_db() -> None:
+  conn = await get_db()
+  await conn.execute(
+    """
+    CREATE TABLE IF NOT EXISTS menu (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      price REAL NOT NULL
+    )
+    """
+  )
+  await conn.execute(
+    """
+    CREATE TABLE IF NOT EXISTS orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_name TEXT NOT NULL,
+      items TEXT NOT NULL, -- JSON
+      total REAL NOT NULL,
+      status TEXT NOT NULL DEFAULT 'added',
+      created_at TEXT NOT NULL
+    )
+    """
+  )
+  await conn.commit()
 
-
-async def get_collection(name: str):
-    db = await get_db()
-    return db[name]
+async def seed_menu_if_empty() -> None:
+  conn = await get_db()
+  cur = await conn.execute("SELECT COUNT(1) AS c FROM menu")
+  row = await cur.fetchone()
+  if row and row.get("c") == 0:
+    sample = [
+      ("Cappuccino", "Rich espresso with steamed milk", 650.0),
+      ("Latte", "Espresso with milk", 550.0),
+      ("Espresso", "Strong shot", 450.0),
+      ("Iced Coffee", "Chilled brew", 600.0),
+      ("Tea", "Hot brewed tea", 350.0),
+    ]
+    for name, desc, price in sample:
+      await conn.execute(
+        "INSERT INTO menu(name, description, price) VALUES (?,?,?)",
+        (name, desc, price),
+      )
+    await conn.commit()

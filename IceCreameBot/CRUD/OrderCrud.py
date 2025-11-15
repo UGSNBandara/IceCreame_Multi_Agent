@@ -1,7 +1,8 @@
-# CRUD for orders using MongoDB (Motor)
+# Order CRUD using SQLite (formerly MongoDB version replaced)
 from typing import List, Dict, Optional, Any
 from datetime import datetime, timezone
 from enum import Enum
+import json
 from CRUD.db import get_db
 
 
@@ -29,50 +30,89 @@ async def add_order(
 
     Fields: customer_name, items, total, status(default=added), created_at
     """
-    db = await get_db()
-    payload = {
-        "customer_name": (customer_name or "").strip() or "Guest",
-        "items": items,
-        "total": float(total),
-        "status": OrderStatus.ADDED.value,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+    conn = await get_db()
+    await conn.execute(
+        "INSERT INTO orders(customer_name, items, total, status, created_at) VALUES (?,?,?,?,?)",
+        (
+            (customer_name or "").strip() or "Guest",
+            json.dumps(items),
+            float(total),
+            OrderStatus.ADDED.value,
+            datetime.now(timezone.utc).isoformat(),
+        ),
+    )
+    await conn.commit()
+    cur = await conn.execute(
+        "SELECT id, customer_name, items, total, status, created_at FROM orders ORDER BY id DESC LIMIT 1"
+    )
+    row = await cur.fetchone()
+    if not row:
+        return {"state": "error_occured", "error": "db_error"}
+    return {
+        "id": str(row["id"]),
+        "customer_name": row["customer_name"],
+        "items": json.loads(row["items"]),
+        "total": row["total"],
+        "status": row["status"],
+        "created_at": row["created_at"],
     }
-    res = await db["orders"].insert_one(payload)
-    created = await db["orders"].find_one({"_id": res.inserted_id})
-    return _stringify_id(created)
 
 
 async def get_order_by_id(order_id: str) -> Optional[Dict[str, Any]]:
-    """Fetch order by Mongo ObjectId string."""
-    db = await get_db()
-    from bson import ObjectId  # local import to avoid lint issues if not installed yet
+    conn = await get_db()
     try:
-        oid = ObjectId(order_id)
+        oid = int(order_id)
     except Exception:
         return None
-    doc = await db["orders"].find_one({"_id": oid})
-    return _stringify_id(doc) if doc else None
+    cur = await conn.execute(
+        "SELECT id, customer_name, items, total, status, created_at FROM orders WHERE id = ?",
+        (oid,),
+    )
+    row = await cur.fetchone()
+    if not row:
+        return None
+    return {
+        "id": str(row["id"]),
+        "customer_name": row["customer_name"],
+        "items": json.loads(row["items"]),
+        "total": row["total"],
+        "status": row["status"],
+        "created_at": row["created_at"],
+    }
 
 async def list_orders() -> List[Dict[str, Any]]:
-    db = await get_db()
-    cursor = db["orders"].find({}).sort("created_at", -1)
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT id, customer_name, items, total, status, created_at FROM orders ORDER BY created_at DESC"
+    )
+    rows = await cur.fetchall()
     out: List[Dict[str, Any]] = []
-    async for doc in cursor:
-        out.append(_stringify_id(doc))
+    for row in rows:
+        out.append(
+            {
+                "id": str(row["id"]),
+                "customer_name": row["customer_name"],
+                "items": json.loads(row["items"]),
+                "total": row["total"],
+                "status": row["status"],
+                "created_at": row["created_at"],
+            }
+        )
     return out
 
 async def update_order_status(order_id: str, new_status: str) -> Dict[str, Any]:
-    """Update order status if valid. Returns updated order or error state."""
     if new_status not in {s.value for s in OrderStatus}:
         return {"state": "invalid_status"}
-    db = await get_db()
-    from bson import ObjectId
+    conn = await get_db()
     try:
-        oid = ObjectId(order_id)
+        oid = int(order_id)
     except Exception:
         return {"state": "invalid_id"}
-    res = await db["orders"].update_one({"_id": oid}, {"$set": {"status": new_status}})
-    if res.matched_count == 0:
+    cur = await conn.execute(
+        "UPDATE orders SET status = ? WHERE id = ?",
+        (new_status, oid),
+    )
+    await conn.commit()
+    if cur.rowcount == 0:
         return {"state": "not_found"}
-    doc = await db["orders"].find_one({"_id": oid})
-    return _stringify_id(doc) if doc else {"state": "not_found"}
+    return await get_order_by_id(order_id)

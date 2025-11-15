@@ -1,4 +1,4 @@
-google-adk[database] == 0.3.0
+google-adk == 0.3.0
 yfinance == 0.2.56
 psutil == 5.9.5
 litellm == 1.66.3
@@ -9,5 +9,4 @@ uvicorn
 pyttsx3 
 vosk 
 soundfile
-motor==3.6.0
-edge-tts==6.1.14
+aiosqlite==0.20.0
