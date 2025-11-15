@@ -1,7 +1,5 @@
 # api.py
 import asyncio
-import os
-import sys
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
@@ -12,8 +10,6 @@ from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from google.adk.sessions import InMemorySessionService
 from google.adk.runners import Runner
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from MainChef.CoffeeAgent.agent import CoffeeShopAgent
 from utils_for_api import call_agent_async
