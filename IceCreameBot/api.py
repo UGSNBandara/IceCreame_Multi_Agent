@@ -22,7 +22,7 @@ from .DB_Tools.menustateTool import get_menu_state
 from .CRUD.OrderCrud import list_orders, update_order_status, OrderStatus, get_order_by_id
 from .CRUD.db import init_db, seed_menu_if_empty
 
-# TTS temporarily disabled: server will return text only
+from .tts_stt_api.piper_loader import synthesize, synthesize_to_file
 
 load_dotenv()
 
@@ -146,18 +146,35 @@ async def interact_with_agent(req: AgentRequest):
 
     result = {"response": reply_text or "", "session_id": sid}
 
-    # Server-side TTS disabled; always return text only
     if req.speak:
-        result.update({"audio_base64": None, "audio_mime": None})
+        try:
+            audio_b64, mime = await synthesize(reply_text or "")
+            result.update({"audio_base64": audio_b64, "audio_mime": mime})
+        except Exception as e:
+            print(f"Piper TTS failed: {e}")
+            result.update({"audio_base64": None, "audio_mime": None})
 
     return JSONResponse(result)
 
 
 
 @app.post("/generate-voice/")
-async def generate_voice(text: str, filename: str, voice: str = "en-US-JennyNeural"):
-    # TTS endpoint temporarily disabled
-    raise HTTPException(status_code=501, detail="Server-side TTS is disabled; text responses only")
+async def generate_voice(text: str, filename: str, voice: str = "en_US-lessac-medium"):
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="Text cannot be empty")
+    if not filename.strip():
+        raise HTTPException(status_code=400, detail="Filename cannot be empty")
+    try:
+        path = await synthesize_to_file(text, filename)
+        return JSONResponse({
+            "success": True,
+            "message": "Voice generated",
+            "filepath": path,
+            "filename": f"{filename}.wav",
+            "voice": voice
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Piper generation failed: {e}")
 
 
 @app.get("/menu/index/{session_id}", response_class=JSONResponse)

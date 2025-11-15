@@ -10,3 +10,6 @@ vosk
 soundfile
 aiosqlite==0.20.0
 deprecated==1.2.14
+requests==2.32.3
+piper-tts==1.2.0
+onnxruntime==1.18.0
