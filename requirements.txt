@@ -12,4 +12,5 @@ aiosqlite==0.20.0
 deprecated==1.2.14
 requests==2.32.3
 piper-tts==1.2.0
-onnxruntime==1.18.0
+# Use a currently available onnxruntime version compatible with Piper
+onnxruntime==1.22.1
