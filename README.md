@@ -33,7 +33,7 @@ A FastAPI-based chatbot for a coffee shop with text-to-speech (TTS) capabilities
    - API docs at `http://127.0.0.1:8000/docs`
 
 ## Deploy to Railway
-1. Push your code to GitHub.
+1. Push your code to GitHub (includes `Procfile` for start command).
 
 2. Go to [Railway.app](https://railway.app) and sign up/login.
 
@@ -43,14 +43,11 @@ A FastAPI-based chatbot for a coffee shop with text-to-speech (TTS) capabilities
 
 5. In Railway dashboard > Variables tab, add:
    - `GOOGLE_API_KEY`: Your Gemini API key
-   - `SQLITE_DB_PATH`: `coffee.db` (optional, default)
+   - `SQLITE_DB_PATH`: `coffee.db` (optional)
 
-6. Set start command (if not auto-detected):
-   - Go to Settings > Start Command: `uvicorn api:app --host 0.0.0.0 --port $PORT`
+6. Deploy! Railway uses the `Procfile` for the start command.
 
-7. Deploy! Railway will build and give you a URL (e.g., `https://your-app.railway.app`).
-
-8. On pushes to the connected branch, Railway auto-redeploys.
+7. On pushes to the connected branch, Railway auto-redeploys.
 
 ## API Endpoints
 - `GET /health`: Health check
