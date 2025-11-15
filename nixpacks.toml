@@ -1,0 +1,8 @@
+providers = ["python"]
+
+[phases.setup]
+# System packages installed into the image (Nixpkgs names)
+nixPkgs = [
+  "espeak",      # eSpeak binary + voices for pyttsx3 on Linux
+  "alsaLib"      # audio libs; pyttsx3 may invoke them even for file output
+]
