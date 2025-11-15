@@ -3,7 +3,7 @@ from typing import List, Dict, Optional, Any
 from datetime import datetime, timezone
 from enum import Enum
 import json
-from CRUD.db import get_db
+from .db import get_db
 
 
 def _stringify_id(doc: Dict[str, Any]) -> Dict[str, Any]:

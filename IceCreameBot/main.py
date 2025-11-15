@@ -4,10 +4,10 @@ from dotenv import load_dotenv
 from .MainChef.CoffeeAgent.agent import CoffeeShopAgent
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
-from utils_for_api import call_agent_async
+from .utils_for_api import call_agent_async
 
-from CRUD.menuCrud import fetch_menu_items
-from Cache.MenuCache import menu_cache
+from .CRUD.menuCrud import fetch_menu_items
+from .Cache.MenuCache import menu_cache
 
 load_dotenv()
 

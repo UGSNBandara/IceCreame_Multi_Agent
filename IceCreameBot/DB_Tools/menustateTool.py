@@ -1,9 +1,9 @@
 # DB_Tools/menuStateTools.py
 from typing import Any, Dict
-from Context.SessionContext import CURRENT_SID
+from ..Context.SessionContext import CURRENT_SID
 
 # Match your existing import style (adjust path/case if you use snake_case dirs)
-from State.MenuStateStore import menu_state_store
+from ..State.MenuStateStore import menu_state_store
 
 async def set_menu_state(menu_state: int):
     """Set (or create) the integer menu state for a session.

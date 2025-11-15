@@ -1,6 +1,6 @@
 from typing import List, Optional, Dict, Any
-from CRUD.db import get_db
-from Cache.MenuCache import MenuItemDTO, menu_cache
+from .db import get_db
+from ..Cache.MenuCache import MenuItemDTO, menu_cache
 
 async def fetch_menu_items() -> List[MenuItemDTO]:
     conn = await get_db()

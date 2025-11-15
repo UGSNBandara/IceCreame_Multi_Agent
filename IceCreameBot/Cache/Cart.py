@@ -2,7 +2,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
-from Cache.MenuCache import menu_cache  # uses your RAM menu
+from .MenuCache import menu_cache  # uses your RAM menu
 
 @dataclass
 class CartLine:
