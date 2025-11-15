@@ -14,10 +14,7 @@ from DB_Tools.cartTool import (
 )
 from DB_Tools.menustateTool import set_menu_state
 # Use the existing order tool
-try:
-    from DB_Tools.orderTool_new import add_order  # preferred if present
-except Exception:
-    from DB_Tools.orderTool import add_order      # fallback
+from DB_Tools.orderTool import add_order
 
 load_dotenv()
 
@@ -48,7 +45,7 @@ Tools you may call
 Strict rules
 - Do NOT invent items or prices; call tools first.
 - When the user asks for the menu, call get_menu_items(), then list items like:
-    - "- Cappuccino · Rs 650.00"
+    - "- Cappuccino · 650 Rupee"
 - Before adding to cart, confirm item name and quantity.
 - For checkout:
     - Ask dine-in vs takeaway.

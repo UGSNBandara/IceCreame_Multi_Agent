@@ -14,10 +14,11 @@ from google.adk.runners import Runner
 from MainChef.CoffeeAgent.agent import CoffeeShopAgent
 from utils_for_api import call_agent_async
 
-from CRUD.menuCrud import fetch_menu_items
+from CRUD.menuCrud import fetch_menu_items, add_menu_item, update_menu_item, delete_menu_item
 from Cache.MenuCache import menu_cache
 
 from DB_Tools.menustateTool import get_menu_state
+from CRUD.OrderCrud import list_orders, update_order_status, OrderStatus
 
 from tts_stt_api.tts_helper import tts_async, tts_save_to_file
 
@@ -68,6 +69,19 @@ class AgentResponse(BaseModel):
     session_id: str
     audio_base64: Optional[str] = None
     audio_mime: Optional[str] = None
+
+class MenuCreateRequest(BaseModel):
+    name: str
+    description: str = ""
+    price: float
+
+class MenuUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    price: Optional[float] = None
+
+class OrderStatusUpdate(BaseModel):
+    status: OrderStatus
     
 # ---- Lifespan: load menu once ----
 @app.on_event("startup")
@@ -123,10 +137,11 @@ async def interact_with_agent(req: AgentRequest):
 
     if req.speak:
         try:
+            # Generate TTS audio using pyttsx3 helper
             audio_b64, mime = await tts_async(reply_text or "", req.voice)
             result.update({"audio_base64": audio_b64, "audio_mime": mime})
-        except Exception:
-            # If TTS fails, still return text
+        except Exception as e:
+            print(f"TTS failed: {e}")
             result.update({"audio_base64": None, "audio_mime": None})
 
     return JSONResponse(result)
@@ -160,7 +175,8 @@ async def generate_voice(text: str, filename: str, voice: str = "en-US-JennyNeur
             "success": True,
             "message": "Voice generated successfully",
             "filepath": filepath,
-            "filename": f"{filename}.mp3",
+            # tts_save_to_file currently writes WAV files
+            "filename": f"{filename}.wav",
             "voice": voice
         })
         
@@ -173,3 +189,62 @@ async def get_menu_index(session_id: str):
     indexx = await get_menu_state(session_id)
     
     return JSONResponse({"index": indexx})
+
+# ---- Menu CRUD Endpoints ----
+@app.post("/menu/items", response_class=JSONResponse)
+async def create_menu_item(payload: MenuCreateRequest):
+    try:
+        doc = await add_menu_item(payload.name, payload.description, payload.price)
+        return JSONResponse(doc)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create menu item: {e}")
+
+@app.put("/menu/items/{item_id}", response_class=JSONResponse)
+async def update_menu_item_endpoint(item_id: int, payload: MenuUpdateRequest):
+    try:
+        doc = await update_menu_item(item_id, payload.name, payload.description, payload.price)
+        if doc.get("state") == "not_found":
+            raise HTTPException(status_code=404, detail="Item not found")
+        return JSONResponse(doc)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update menu item: {e}")
+
+@app.delete("/menu/items/{item_id}", response_class=JSONResponse)
+async def delete_menu_item_endpoint(item_id: int):
+    try:
+        doc = await delete_menu_item(item_id)
+        if doc.get("state") == "not_found":
+            raise HTTPException(status_code=404, detail="Item not found")
+        return JSONResponse(doc)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete menu item: {e}")
+
+# ---- Order Endpoints ----
+@app.get("/orders", response_class=JSONResponse)
+async def get_orders():
+    try:
+        orders = await list_orders()
+        return JSONResponse({"orders": orders})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list orders: {e}")
+
+@app.put("/orders/{order_id}/status", response_class=JSONResponse)
+async def update_order_status_endpoint(order_id: str, payload: OrderStatusUpdate):
+    try:
+        updated = await update_order_status(order_id, payload.status.value)
+        state = updated.get("state")
+        if state == "invalid_status":
+            raise HTTPException(status_code=400, detail="Invalid status")
+        if state == "invalid_id":
+            raise HTTPException(status_code=400, detail="Invalid order id")
+        if state == "not_found":
+            raise HTTPException(status_code=404, detail="Order not found")
+        return JSONResponse(updated)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update order status: {e}")
