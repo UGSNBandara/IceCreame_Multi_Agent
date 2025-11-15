@@ -6,7 +6,6 @@ google-generativeai == 0.8.5
 python-dotenv == 1.1.0
 fastapi 
 uvicorn 
-pyttsx3 
 vosk 
 soundfile
 aiosqlite==0.20.0

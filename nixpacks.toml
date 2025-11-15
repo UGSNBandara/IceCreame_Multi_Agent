@@ -1,8 +1,2 @@
 providers = ["python"]
-
-[phases.setup]
-# System packages installed into the image (Nixpkgs names)
-nixPkgs = [
-  "espeak-ng",   # modern eSpeak-ng for Linux (preferred by pyttsx3)
-  "alsaLib"      # audio libs; pyttsx3 may invoke them even for file output
-]
+# Nixpacks config intentionally minimal; server-side TTS disabled.
