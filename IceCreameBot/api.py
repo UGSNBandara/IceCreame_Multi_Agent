@@ -32,7 +32,7 @@ app = FastAPI(title=APP_NAME)
 # (Optional) allow your frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten in prod
+    allow_origins=["http://localhost:5173", "https://sofia-coffee.railway.app", "https://railway.com"],  # Add your frontend origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
