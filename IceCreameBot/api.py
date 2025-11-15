@@ -32,10 +32,14 @@ app = FastAPI(title=APP_NAME)
 # (Optional) allow your frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "https://sofia-coffee.railway.app", "https://railway.com"],  # Add your frontend origins
-    allow_credentials=True,
+    # Use regex to allow any origin; remove credentials so wildcard is safe
+    allow_origins=["*"],
+    allow_origin_regex=".*",
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=86400,
 )
 
 # ---- ADK infra (singletons) ----
