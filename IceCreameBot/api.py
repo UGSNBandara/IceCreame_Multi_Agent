@@ -21,7 +21,7 @@ from .DB_Tools.menustateTool import get_menu_state
 from .CRUD.OrderCrud import list_orders, update_order_status, OrderStatus, get_order_by_id
 from .CRUD.db import init_db, seed_menu_if_empty
 
-from tts_stt_api.tts_helper import tts_async, tts_save_to_file
+from .tts_stt_api.tts_helper import tts_async, tts_save_to_file
 
 load_dotenv()
 
