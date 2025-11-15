@@ -1,12 +1,20 @@
 # tts_helper.py
-import os, tempfile, base64, asyncio, concurrent.futures
+import os, tempfile, base64, asyncio, concurrent.futures, platform
 import pyttsx3
 
 _tts_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 _tts_lock = asyncio.Lock()  # pyttsx3 isn't thread-safe
 
+def _init_engine():
+    try:
+        if platform.system() == "Linux":
+            return pyttsx3.init(driverName="espeak")
+        return pyttsx3.init()
+    except Exception as e:
+        raise
+
 def _tts_blocking(text: str) -> bytes:
-    engine = pyttsx3.init()
+    engine = _init_engine()
     # Try to pick Zira (female voice on Windows) or any female voice
     try:
         voices = engine.getProperty("voices")
@@ -37,37 +45,13 @@ def _tts_blocking(text: str) -> bytes:
         except Exception: pass
 
 async def tts_async(text: str, voice: str = "en-US-JennyNeural") -> tuple[str, str]:
-    """Return (audio_base64, mime) using pyttsx3, fallback to edge-tts on Linux.
+    """Return (audio_base64, mime) using pyttsx3 for offline TTS.
 
-    - Primary: pyttsx3 (offline). Requires system TTS (eSpeak/eSpeak-ng on Linux).
-    - Fallback: edge-tts (online) if pyttsx3 fails in server environments like Railway.
+    Requires eSpeak/eSpeak-ng on Linux. Ensure it's installed in the container.
     """
     loop = asyncio.get_running_loop()
-    try:
-        audio_bytes = await loop.run_in_executor(_tts_pool, _tts_blocking, text)
-        return base64.b64encode(audio_bytes).decode("utf-8"), "audio/wav"
-    except Exception:
-        try:
-            # Lazy import and generate via edge-tts to a temp mp3 file
-            import edge_tts  # type: ignore
-
-            fd, path = tempfile.mkstemp(suffix=".mp3")
-            os.close(fd)
-            try:
-                communicate = edge_tts.Communicate(text, voice=voice)
-                await communicate.save(path)
-                with open(path, "rb") as f:
-                    audio_bytes = f.read()
-            finally:
-                try:
-                    os.remove(path)
-                except Exception:
-                    pass
-
-            return base64.b64encode(audio_bytes).decode("utf-8"), "audio/mpeg"
-        except Exception as e:
-            # Re-raise so API can report TTS failure cleanly
-            raise e
+    audio_bytes = await loop.run_in_executor(_tts_pool, _tts_blocking, text)
+    return base64.b64encode(audio_bytes).decode("utf-8"), "audio/wav"
 
 async def tts_save_to_file(text: str, filename: str, voice: str = "en-US-JennyNeural") -> str:
     """Generate TTS audio using pyttsx3 and save to Voices folder. Returns the file path."""
