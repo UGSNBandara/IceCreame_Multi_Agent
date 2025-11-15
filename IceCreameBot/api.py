@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from google.adk.sessions import InMemorySessionService
 from google.adk.runners import Runner
 
-from MainChef.CoffeeAgent.agent import CoffeeShopAgent
+from .MainChef.CoffeeAgent.agent import CoffeeShopAgent
 from utils_for_api import call_agent_async
 
 from CRUD.menuCrud import fetch_menu_items, add_menu_item, update_menu_item, delete_menu_item

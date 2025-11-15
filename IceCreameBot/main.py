@@ -1,7 +1,7 @@
 import asyncio
 
 from dotenv import load_dotenv
-from MainChef.CoffeeAgent.agent import CoffeeShopAgent
+from .MainChef.CoffeeAgent.agent import CoffeeShopAgent
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from utils_for_api import call_agent_async
