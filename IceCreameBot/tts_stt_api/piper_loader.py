@@ -16,15 +16,16 @@ import requests
 IS_LINUX = os.name == "posix"
 BASE_DIR = os.path.dirname(__file__)
 
-BIN_URL = "https://github.com/rhasspy/piper/releases/download/v1.2.0/piper_linux_x86_64.tar.gz"
+BIN_URL = "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz"
 BIN_DIR = os.path.join(BASE_DIR, "piper_bin")
 BIN_TAR = os.path.join(BIN_DIR, "piper_linux_x86_64.tar.gz")
 BIN_PATH = os.path.join(BIN_DIR, "piper")
 
-MODEL_URL = "https://github.com/rhasspy/piper/releases/download/v1.2.0/en_US-lessac-medium.onnx.gz"
+MODEL_URL = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx"
+MODEL_JSON_URL = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json"
 MODELS_DIR = os.path.join(BASE_DIR, "piper_models")
-MODEL_GZ = os.path.join(MODELS_DIR, "en_US-lessac-medium.onnx.gz")
 MODEL_PATH = os.path.join(MODELS_DIR, "en_US-lessac-medium.onnx")
+MODEL_JSON_PATH = os.path.join(MODELS_DIR, "en_US-lessac-medium.onnx.json")
 
 _prepare_lock = asyncio.Lock()
 _prepared = False
@@ -53,10 +54,9 @@ async def _ensure_binary() -> None:
 async def _ensure_model() -> None:
     os.makedirs(MODELS_DIR, exist_ok=True)
     if not os.path.exists(MODEL_PATH):
-        if not os.path.exists(MODEL_GZ):
-            await _download(MODEL_URL, MODEL_GZ)
-        with gzip.open(MODEL_GZ, "rb") as fin, open(MODEL_PATH, "wb") as fout:
-            shutil.copyfileobj(fin, fout)
+        await _download(MODEL_URL, MODEL_PATH)
+    if not os.path.exists(MODEL_JSON_PATH):
+        await _download(MODEL_JSON_URL, MODEL_JSON_PATH)
 
 async def prepare() -> None:
     global _prepared
