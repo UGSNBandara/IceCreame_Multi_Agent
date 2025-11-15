@@ -99,7 +99,8 @@ async def _startup():
 
 @app.get("/health")
 async def health():
-    return {"ok": True}
+    from fastapi import Response
+    return Response(content='{"ok": true}', media_type="application/json", headers={"X-App-Stamp": "custom123"})
 
 # ---- Helpers ----
 async def _get_or_create_session(user_id: str, session_id: Optional[str], restart: bool) -> str:
