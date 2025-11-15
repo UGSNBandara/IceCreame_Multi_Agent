@@ -1,4 +1,5 @@
 # api.py
+print("=== IMPORTING IceCreameBot.api (sentinel) ===")
 import asyncio
 from typing import Optional
 
@@ -91,11 +92,13 @@ class OrderStatusUpdate(BaseModel):
 # ---- Lifespan: load menu once ----
 @app.on_event("startup")
 async def _startup():
+    print("=== STARTUP BEGIN ===")
     await init_db()
     await seed_menu_if_empty()
     items = await fetch_menu_items()
     menu_cache.load(items)
     print(f"SQLite initialized. Menu loaded: {len(items)} items")
+    print("=== STARTUP COMPLETE ===")
 
 @app.get("/health")
 async def health():
