@@ -10,3 +10,4 @@ pyttsx3
 vosk 
 soundfile
 aiosqlite==0.20.0
+deprecated==1.2.14
