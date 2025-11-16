@@ -32,6 +32,12 @@ MODEL_JSON_PATH = os.path.join(MODELS_DIR, "en_US-lessac-medium.onnx.json")
 _prepare_lock = asyncio.Lock()
 _prepared = False
 
+def _find_piper_executable(root: str) -> str:
+    for dirpath, dirnames, filenames in os.walk(root):
+        if "piper" in filenames:
+            return os.path.join(dirpath, "piper")
+    raise FileNotFoundError("Piper executable not found after extraction")
+
 async def _download(url: str, dest: str, timeout: int = 180) -> None:
     resp = requests.get(url, timeout=timeout)
     resp.raise_for_status()
@@ -40,46 +46,40 @@ async def _download(url: str, dest: str, timeout: int = 180) -> None:
 
 async def _ensure_binary() -> None:
     os.makedirs(BIN_DIR, exist_ok=True)
-    if not os.path.exists(BIN_PATH):
-        if not os.path.exists(BIN_TAR):
-            await _download(BIN_URL, BIN_TAR)
-        # extract tar
-        with tarfile.open(BIN_TAR, "r:gz") as tf:
-            tf.extractall(BIN_DIR)
-        inner_dir = os.path.join(BIN_DIR, "piper_linux_x86_64")
-        inner = os.path.join(inner_dir, "piper")
-        if os.path.exists(inner):
-            shutil.move(inner, BIN_PATH)
-            # copy supporting files (libs, etc.) to BIN_DIR root if needed
-            for entry in os.listdir(inner_dir):
-                p = os.path.join(inner_dir, entry)
-                if os.path.isdir(p):
-                    dest = os.path.join(BIN_DIR, entry)
-                    if not os.path.exists(dest):
-                        shutil.move(p, dest)
-            shutil.rmtree(inner_dir, ignore_errors=True)
-        try:
-            os.chmod(BIN_PATH, 0o755)
-        except Exception:
-            pass
-    # Ensure runtime copy in /tmp (likely executable mount)
+    # Download tarball if needed and extract (idempotent)
+    if not os.path.exists(BIN_TAR):
+        await _download(BIN_URL, BIN_TAR)
+    with tarfile.open(BIN_TAR, "r:gz") as tf:
+        tf.extractall(BIN_DIR)
+
+    # Locate the actual piper executable within extracted contents
+    piper_src = _find_piper_executable(BIN_DIR)
+    # Source root for libs/configs alongside binary
+    src_root = os.path.dirname(piper_src)
+
+    # Prepare runtime dir under /tmp
     if not os.path.exists(RUN_DIR):
         os.makedirs(RUN_DIR, exist_ok=True)
-    # Copy binary and any adjacent directories (libs) if not already present
-    if not os.path.exists(RUN_BIN_PATH):
-        shutil.copy2(BIN_PATH, RUN_BIN_PATH)
-        try:
-            os.chmod(RUN_BIN_PATH, 0o755)
-        except Exception:
-            pass
-        # copy support folders (if exist)
-        for entry in os.listdir(BIN_DIR):
-            p = os.path.join(BIN_DIR, entry)
-            if entry == "piper" or not os.path.isdir(p):
-                continue
-            dest = os.path.join(RUN_DIR, entry)
-            if not os.path.exists(dest):
-                shutil.copytree(p, dest)
+    # Copy full source root contents into RUN_DIR (preserve structure)
+    for entry in os.listdir(src_root):
+        src_path = os.path.join(src_root, entry)
+        dst_path = os.path.join(RUN_DIR, entry)
+        if os.path.isdir(src_path):
+            if not os.path.exists(dst_path):
+                shutil.copytree(src_path, dst_path)
+        else:
+            if not os.path.exists(dst_path):
+                shutil.copy2(src_path, dst_path)
+    # Compute runtime binary path (handle nested layouts)
+    rel_bin = os.path.relpath(piper_src, src_root)
+    runtime_bin = os.path.join(RUN_DIR, rel_bin)
+    try:
+        os.chmod(runtime_bin, 0o755)
+    except Exception:
+        pass
+    # Update global run bin path
+    global RUN_BIN_PATH
+    RUN_BIN_PATH = runtime_bin
 
 async def _ensure_model() -> None:
     os.makedirs(MODELS_DIR, exist_ok=True)
