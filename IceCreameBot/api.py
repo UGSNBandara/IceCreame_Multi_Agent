@@ -1,7 +1,9 @@
 # api.py
 print("=== IMPORTING IceCreameBot.api (sentinel) ===")
 import asyncio
-from typing import Optional
+import time
+import os
+from typing import Optional, Dict, Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -47,8 +49,12 @@ app.add_middleware(
 session_service = InMemorySessionService()
 runner = Runner(agent=CoffeeShopAgent, app_name=APP_NAME, session_service=session_service)
 
-# per-user map -> session_id (simple in-RAM)
-user_sessions: dict[str, str] = {}
+# Session retention policy (env-configurable)
+SESSION_TTL_SEC = int(os.getenv("SESSION_TTL_SEC", "900"))           # 15 minutes
+SESSION_IDLE_RESET_SEC = int(os.getenv("SESSION_IDLE_RESET_SEC", "31536000"))  # ~1 year (effectively disabled)
+
+# per-user map -> {"session_id": str, "created_at": float, "last_seen": float}
+user_sessions: Dict[str, Dict[str, Any]] = {}
 _user_sessions_lock = asyncio.Lock()
 
 # ---- Initial state ----
@@ -107,30 +113,39 @@ async def health():
 
 # ---- Helpers ----
 async def _get_or_create_session(user_id: str, session_id: Optional[str], restart: bool) -> str:
+    now = time.time()
     async with _user_sessions_lock:
-        # explicit session_id from client wins unless restart
-        if restart or (not session_id and user_id not in user_sessions):
+        def _create_new() -> str:
             new = session_service.create_session(
                 app_name=APP_NAME, user_id=user_id, state=INITIAL_STATE.copy()
             )
-            user_sessions[user_id] = new.id
+            user_sessions[user_id] = {
+                "session_id": new.id,
+                "created_at": now,
+                "last_seen": now,
+            }
             return new.id
 
-        if restart and user_id in user_sessions:
-            # create fresh session even if one exists
-            new = session_service.create_session(
-                app_name=APP_NAME, user_id=user_id, state=INITIAL_STATE.copy()
-            )
-            user_sessions[user_id] = new.id
-            return new.id
+        # Explicit restart always creates a new session
+        if restart or user_id not in user_sessions:
+            return _create_new()
 
-        # reuse existing
-        if session_id:
-            # client pinned a session; trust it and track by user
-            user_sessions[user_id] = session_id
-            return session_id
+        meta = user_sessions[user_id]
+        sid_current = meta.get("session_id")
+        created_at = meta.get("created_at", now)
+        last_seen = meta.get("last_seen", now)
 
-        return user_sessions[user_id]
+        # TTL: new session after absolute age
+        if (now - created_at) > SESSION_TTL_SEC:
+            return _create_new()
+        # Idle reset: new session after inactivity window
+        if (now - last_seen) > SESSION_IDLE_RESET_SEC:
+            return _create_new()
+
+        # Keep server-side session; client-provided session_id is ignored if different
+        meta["last_seen"] = now
+        user_sessions[user_id] = meta
+        return sid_current
 
 
 # ---- Main endpoint ----
