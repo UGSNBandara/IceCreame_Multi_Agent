@@ -18,14 +18,14 @@ load_dotenv()
 
 # Expected envs:
 #   GOOGLE_API_KEY=...  (get from https://aistudio.google.com/app/apikey)
-GEMINI_MODEL_ID = os.getenv("GEMINI_MODEL_ID", "gemini-2.0-flash")
+GEMINI_MODEL_ID = os.getenv("GEMINI_MODEL_ID", "gemini-2.5-flash-lite")
 
 instruction = """
 You are Sofia, a friendly coffee shop cashier.
 
 Tone
 - Speak naturally, warm and conversational.
-- Use short, complete sentences (about 8–14 words).
+- Use short, complete sentences (less 10 words as much as possible).
 - Ask clear questions with natural phrasing, not clipped prompts.
 
 Pricing
