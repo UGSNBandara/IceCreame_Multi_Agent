@@ -9,6 +9,7 @@ import time
 from typing import Tuple
 
 import requests
+from asyncio.subprocess import PIPE
 
 # Piper binary approach (no python package) for Python 3.13 compatibility.
 # Downloads Linux x86_64 binary + model on first use. Intended for Railway (Linux).
@@ -38,38 +39,46 @@ def _find_piper_executable(root: str) -> str:
             return os.path.join(dirpath, "piper")
     raise FileNotFoundError("Piper executable not found after extraction")
 
-async def _download(url: str, dest: str, timeout: int = 180) -> None:
+def _download_sync(url: str, dest: str, timeout: int = 180) -> None:
     resp = requests.get(url, timeout=timeout)
     resp.raise_for_status()
     with open(dest, "wb") as f:
         f.write(resp.content)
+
+async def _download(url: str, dest: str, timeout: int = 180) -> None:
+    await asyncio.to_thread(_download_sync, url, dest, timeout)
 
 async def _ensure_binary() -> None:
     os.makedirs(BIN_DIR, exist_ok=True)
     # Download tarball if needed and extract (idempotent)
     if not os.path.exists(BIN_TAR):
         await _download(BIN_URL, BIN_TAR)
-    with tarfile.open(BIN_TAR, "r:gz") as tf:
-        tf.extractall(BIN_DIR)
+    # extract tarball (can be heavy) in thread
+    def _extract():
+        with tarfile.open(BIN_TAR, "r:gz") as tf:
+            tf.extractall(BIN_DIR)
+    await asyncio.to_thread(_extract)
 
     # Locate the actual piper executable within extracted contents
-    piper_src = _find_piper_executable(BIN_DIR)
+    piper_src = await asyncio.to_thread(_find_piper_executable, BIN_DIR)
     # Source root for libs/configs alongside binary
     src_root = os.path.dirname(piper_src)
 
     # Prepare runtime dir under /tmp
     if not os.path.exists(RUN_DIR):
         os.makedirs(RUN_DIR, exist_ok=True)
-    # Copy full source root contents into RUN_DIR (preserve structure)
-    for entry in os.listdir(src_root):
-        src_path = os.path.join(src_root, entry)
-        dst_path = os.path.join(RUN_DIR, entry)
-        if os.path.isdir(src_path):
-            if not os.path.exists(dst_path):
-                shutil.copytree(src_path, dst_path)
-        else:
-            if not os.path.exists(dst_path):
-                shutil.copy2(src_path, dst_path)
+    # Copy full source root contents into RUN_DIR (preserve structure) in a thread
+    def _copy_all():
+        for entry in os.listdir(src_root):
+            src_path = os.path.join(src_root, entry)
+            dst_path = os.path.join(RUN_DIR, entry)
+            if os.path.isdir(src_path):
+                if not os.path.exists(dst_path):
+                    shutil.copytree(src_path, dst_path)
+            else:
+                if not os.path.exists(dst_path):
+                    shutil.copy2(src_path, dst_path)
+    await asyncio.to_thread(_copy_all)
     # Compute runtime binary path (handle nested layouts)
     rel_bin = os.path.relpath(piper_src, src_root)
     runtime_bin = os.path.join(RUN_DIR, rel_bin)
@@ -117,11 +126,21 @@ async def synthesize(text: str) -> Tuple[str, str]:
     except Exception:
         pass
     cmd = [RUN_BIN_PATH, "--model", MODEL_PATH, "--output_file", out_path]
-    proc = subprocess.run(cmd, input=text.encode("utf-8"), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    # Run subprocess asynchronously
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdin=PIPE,
+        stdout=PIPE,
+        stderr=PIPE,
+    )
+    stdout, stderr = await proc.communicate(input=text.encode("utf-8"))
     if proc.returncode != 0:
-        raise RuntimeError(f"Piper failed: {proc.stderr.decode(errors='ignore')}")
-    with open(out_path, "rb") as f:
-        wav_bytes = f.read()
+        raise RuntimeError(f"Piper failed: {stderr.decode(errors='ignore')}")
+    # read file in thread to avoid blocking
+    def _read_bytes(path: str) -> bytes:
+        with open(path, "rb") as f:
+            return f.read()
+    wav_bytes = await asyncio.to_thread(_read_bytes, out_path)
     b64 = base64.b64encode(wav_bytes).decode()
     return b64, "audio/wav"
 
@@ -131,7 +150,13 @@ async def synthesize_to_file(text: str, filename: str) -> str:
     os.makedirs(voices_dir, exist_ok=True)
     out_path = os.path.join(voices_dir, f"{filename}.wav")
     cmd = [RUN_BIN_PATH, "--model", MODEL_PATH, "--output_file", out_path]
-    proc = subprocess.run(cmd, input=text.encode("utf-8"), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdin=PIPE,
+        stdout=PIPE,
+        stderr=PIPE,
+    )
+    stdout, stderr = await proc.communicate(input=text.encode("utf-8"))
     if proc.returncode != 0:
-        raise RuntimeError(f"Piper failed: {proc.stderr.decode(errors='ignore')}")
+        raise RuntimeError(f"Piper failed: {stderr.decode(errors='ignore')}")
     return out_path
