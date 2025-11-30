@@ -173,6 +173,35 @@ async def interact_with_agent(req: AgentRequest):
 
 
 
+# ---- Text-only endpoint (no TTS) ----
+@app.post("/agent/text", response_model=AgentResponse)
+async def interact_with_agent_text_only(req: AgentRequest):
+    print("\n" + "="*80)
+    print(f"🎯 API ENDPOINT HIT: /agent/text (TEXT ONLY)")
+    print(f"   User: {req.user_id}")
+    print(f"   Text: {req.text}")
+    print(f"   Restart: {req.restart}")
+    print("="*80 + "\n")
+    
+    sid = await _get_or_create_session(req.user_id, req.session_id, req.restart)
+    
+    print(f"📌 Session ID: {sid}\n")
+
+    try:
+        print("🔄 Calling agent...")
+        reply_text = await call_agent_async(runner, req.user_id, sid, req.text)
+        print(f"✅ Agent returned: {reply_text}\n")
+    except Exception as e:
+        print(f"❌ Agent error: {e}\n")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={"detail": f"agent_error: {e!s}"})
+
+    # Return only text, no TTS
+    result = {"response": reply_text or "", "session_id": sid}
+    return JSONResponse(result)
+
+
 @app.post("/generate-voice/")
 async def generate_voice(text: str, filename: str, voice: str = "en_US-lessac-medium"):
     if not text.strip():
