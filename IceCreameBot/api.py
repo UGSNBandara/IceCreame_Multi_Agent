@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from google.adk.sessions import InMemorySessionService
 from google.adk.runners import Runner
 
-from .MainChef.CoffeeAgent.agent import CoffeeShopAgent
+from .MainChef.IceCreamAgent.agent import IceCreamAgent
 from .utils_for_api import call_agent_async
 
 from .CRUD.menuCrud import fetch_menu_items, add_menu_item, update_menu_item, delete_menu_item
@@ -22,13 +22,23 @@ from .Cache.MenuCache import menu_cache
 
 from .DB_Tools.menustateTool import get_menu_state
 from .CRUD.OrderCrud import list_orders, update_order_status, OrderStatus, get_order_by_id
-from .CRUD.db import init_db, seed_menu_if_empty
+from .CRUD.db import (
+    init_db,
+    seed_menu_if_empty,
+    outbox_fetch,
+    outbox_mark_done,
+    outbox_mark_error,
+    sqlite_is_empty,
+    sqlite_upsert_menu,
+    sqlite_upsert_orders,
+)
+from .Sync.mongo_sync import process_outbox_once, hydrate_sqlite_from_mongo
 
 from .tts_stt_api.piper_loader import synthesize, synthesize_to_file
 
 load_dotenv()
 
-APP_NAME = "Coffee Shop Agent"
+APP_NAME = "Ice Cream Agent"
 
 app = FastAPI(title=APP_NAME)
 
@@ -47,7 +57,7 @@ app.add_middleware(
 
 # ---- ADK infra (singletons) ----
 session_service = InMemorySessionService()
-runner = Runner(agent=CoffeeShopAgent, app_name=APP_NAME, session_service=session_service)
+runner = Runner(agent=IceCreamAgent, app_name=APP_NAME, session_service=session_service)
 
 # Session retention policy (env-configurable)
 SESSION_TTL_SEC = int(os.getenv("SESSION_TTL_SEC", "900"))           # 15 minutes
@@ -104,6 +114,28 @@ async def _startup():
     items = await fetch_menu_items()
     menu_cache.load(items)
     print(f"SQLite initialized. Menu loaded: {len(items)} items")
+    # Try hydrate from Mongo if SQLite empty
+    try:
+        await hydrate_sqlite_from_mongo(
+            upsert_menu=sqlite_upsert_menu,
+            upsert_orders=sqlite_upsert_orders,
+            is_sqlite_empty=sqlite_is_empty,
+        )
+    except Exception as e:
+        print(f"Hydration skipped/failed: {e}")
+    # Start background outbox worker
+    async def _worker():
+        while True:
+            try:
+                await process_outbox_once(
+                    fetch_outbox=outbox_fetch,
+                    mark_done=outbox_mark_done,
+                    mark_error=outbox_mark_error,
+                )
+            except Exception as e:  # noqa: BLE001
+                print(f"Outbox worker error: {e}")
+            await asyncio.sleep(5)
+    asyncio.create_task(_worker())
     print("=== STARTUP COMPLETE ===")
 
 @app.get("/health")
@@ -170,6 +202,31 @@ async def interact_with_agent(req: AgentRequest):
             result.update({"audio_base64": None, "audio_mime": None})
 
     return JSONResponse(result)
+@app.post("/admin/sync-now")
+async def admin_sync_now():
+    try:
+        await process_outbox_once(
+            fetch_outbox=outbox_fetch,
+            mark_done=outbox_mark_done,
+            mark_error=outbox_mark_error,
+        )
+        return JSONResponse({"ok": True})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"sync_failed: {e}")
+
+@app.post("/admin/rebuild-cache")
+async def admin_rebuild_cache():
+    try:
+        await hydrate_sqlite_from_mongo(
+            upsert_menu=sqlite_upsert_menu,
+            upsert_orders=sqlite_upsert_orders,
+            is_sqlite_empty=lambda: True,  # force hydrate
+        )
+        items = await fetch_menu_items()
+        menu_cache.load(items)
+        return JSONResponse({"ok": True, "menu_items": len(items)})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"rebuild_failed: {e}")
 
 
 

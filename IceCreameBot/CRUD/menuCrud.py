@@ -1,5 +1,5 @@
 from typing import List, Optional, Dict, Any
-from .db import get_db
+from .db import get_db, outbox_enqueue
 from ..Cache.MenuCache import MenuItemDTO, menu_cache
 
 async def fetch_menu_items() -> List[MenuItemDTO]:
@@ -31,13 +31,15 @@ async def _refresh_cache() -> None:
 async def add_menu_item(name: str, description: str, price: float) -> Dict[str, Any]:
     conn = await get_db()
     await conn.execute(
-        "INSERT INTO menu(name, description, price) VALUES (?,?,?)",
+        "INSERT INTO menu(name, description, price, updated_at) VALUES (?,?,?, datetime('now'))",
         (name, description, float(price)),
     )
     await conn.commit()
     cur = await conn.execute("SELECT id, name, description, price FROM menu ORDER BY id DESC LIMIT 1")
     r = await cur.fetchone()
     doc = {"id": r["id"], "name": r["name"], "description": r.get("description", ""), "price": r["price"]}
+    # Queue outbox event for Mongo
+    await outbox_enqueue("menu", "insert", doc)
     await _refresh_cache()
     return doc
 
@@ -59,6 +61,7 @@ async def update_menu_item(item_id: int, name: Optional[str] = None, description
         r = await cur.fetchone()
         return ({"id": r["id"], "name": r["name"], "description": r.get("description", ""), "price": r["price"]}
                 if r else {"state": "not_found"})
+    patch_pairs.append("updated_at = datetime('now')")
     sql = "UPDATE menu SET " + ", ".join(patch_pairs) + " WHERE id = ?"
     params.append(int(item_id))
     cur2 = await conn.execute(sql, tuple(params))
@@ -67,6 +70,7 @@ async def update_menu_item(item_id: int, name: Optional[str] = None, description
         return {"state": "not_found"}
     cur = await conn.execute("SELECT id, name, description, price FROM menu WHERE id = ?", (int(item_id),))
     r = await cur.fetchone()
+    await outbox_enqueue("menu", "update", {"id": int(item_id), "name": r["name"], "description": r.get("description",""), "price": r["price"]})
     await _refresh_cache()
     return ({"id": r["id"], "name": r["name"], "description": r.get("description", ""), "price": r["price"]}
             if r else {"state": "not_found"})
@@ -77,5 +81,6 @@ async def delete_menu_item(item_id: int) -> Dict[str, Any]:
     await conn.commit()
     if cur.rowcount == 0:
         return {"state": "not_found"}
+    await outbox_enqueue("menu", "delete", {"id": int(item_id)})
     await _refresh_cache()
     return {"state": "deleted", "id": int(item_id)}

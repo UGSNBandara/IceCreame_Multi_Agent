@@ -3,7 +3,7 @@ from typing import List, Dict, Optional, Any
 from datetime import datetime, timezone
 from enum import Enum
 import json
-from .db import get_db
+from .db import get_db, outbox_enqueue
 
 
 def _stringify_id(doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -32,7 +32,7 @@ async def add_order(
     """
     conn = await get_db()
     await conn.execute(
-        "INSERT INTO orders(customer_name, items, total, status, created_at) VALUES (?,?,?,?,?)",
+        "INSERT INTO orders(customer_name, items, total, status, created_at, updated_at) VALUES (?,?,?,?,?, datetime('now'))",
         (
             (customer_name or "").strip() or "Guest",
             json.dumps(items),
@@ -48,7 +48,7 @@ async def add_order(
     row = await cur.fetchone()
     if not row:
         return {"state": "error_occured", "error": "db_error"}
-    return {
+    doc = {
         "id": str(row["id"]),
         "customer_name": row["customer_name"],
         "items": json.loads(row["items"]),
@@ -56,6 +56,8 @@ async def add_order(
         "status": row["status"],
         "created_at": row["created_at"],
     }
+    await outbox_enqueue("order", "insert", doc)
+    return doc
 
 
 async def get_order_by_id(order_id: str) -> Optional[Dict[str, Any]]:
@@ -109,10 +111,13 @@ async def update_order_status(order_id: str, new_status: str) -> Dict[str, Any]:
     except Exception:
         return {"state": "invalid_id"}
     cur = await conn.execute(
-        "UPDATE orders SET status = ? WHERE id = ?",
+        "UPDATE orders SET status = ?, updated_at = datetime('now') WHERE id = ?",
         (new_status, oid),
     )
     await conn.commit()
     if cur.rowcount == 0:
         return {"state": "not_found"}
-    return await get_order_by_id(order_id)
+    doc = await get_order_by_id(order_id)
+    if doc:
+        await outbox_enqueue("order", "update", doc)
+    return doc
