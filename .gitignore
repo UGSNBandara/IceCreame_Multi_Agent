@@ -6,6 +6,5 @@
 *.pyc
 **.pyc
 ***.pyc
-coffee.db
 icecream.db
-insert_menu.py
+insert_menu.pyyes
