@@ -67,6 +67,14 @@ async def process_outbox_once(fetch_outbox, mark_done, mark_error):
                 await _sync_menu_event(db, op, payload)
             elif entity == "order":
                 await _sync_order_event(db, op, payload)
+            elif entity == "category":
+                await _sync_category_event(db, op, payload)
+            elif entity == "flavor":
+                await _sync_flavor_event(db, op, payload)
+            elif entity == "item_category":
+                await _sync_item_category_event(db, op, payload)
+            elif entity == "item_flavor":
+                await _sync_item_flavor_event(db, op, payload)
             await mark_done(oid)
         except Exception as e:  # noqa: BLE001
             await mark_error(oid, str(e))
@@ -95,6 +103,46 @@ async def _sync_order_event(db, op: str, payload: Dict[str, Any]):
         )
     # Orders usually not deleted; skip delete branch
 
+async def _sync_category_event(db, op: str, payload: Dict[str, Any]):
+    col = db["categories"]
+    if op in ("insert", "update", "upsert"):
+        doc = dict(payload)
+        doc["updated_at"] = _utc_now_iso()
+        await asyncio.to_thread(
+            lambda: col.update_one({"id": doc["id"]}, {"$set": doc}, upsert=True)
+        )
+    elif op == "delete":
+        await asyncio.to_thread(lambda: col.delete_one({"id": payload["id"]}))
+
+async def _sync_flavor_event(db, op: str, payload: Dict[str, Any]):
+    col = db["flavors"]
+    if op in ("insert", "update", "upsert"):
+        doc = dict(payload)
+        doc["updated_at"] = _utc_now_iso()
+        await asyncio.to_thread(
+            lambda: col.update_one({"id": doc["id"]}, {"$set": doc}, upsert=True)
+        )
+    elif op == "delete":
+        await asyncio.to_thread(lambda: col.delete_one({"id": payload["id"]}))
+
+async def _sync_item_category_event(db, op: str, payload: Dict[str, Any]):
+    col = db["item_category"]
+    key = {"item_id": int(payload["item_id"]), "category_id": int(payload["category_id"])}
+    if op in ("insert", "update", "upsert"):
+        doc = {**key, "updated_at": _utc_now_iso()}
+        await asyncio.to_thread(lambda: col.update_one(key, {"$set": doc}, upsert=True))
+    elif op == "delete":
+        await asyncio.to_thread(lambda: col.delete_one(key))
+
+async def _sync_item_flavor_event(db, op: str, payload: Dict[str, Any]):
+    col = db["item_flavor"]
+    key = {"item_id": int(payload["item_id"]), "flavor_id": int(payload["flavor_id"])}
+    if op in ("insert", "update", "upsert"):
+        doc = {**key, "updated_at": _utc_now_iso()}
+        await asyncio.to_thread(lambda: col.update_one(key, {"$set": doc}, upsert=True))
+    elif op == "delete":
+        await asyncio.to_thread(lambda: col.delete_one(key))
+
 
 # ---- Hydration (Startup cache rebuild) ----
 async def hydrate_sqlite_from_mongo(
@@ -102,6 +150,10 @@ async def hydrate_sqlite_from_mongo(
     upsert_orders,
     is_sqlite_empty,
     recent_days: int = 14,
+    upsert_categories=None,
+    upsert_flavors=None,
+    upsert_item_category=None,
+    upsert_item_flavor=None,
 ):
     db = await get_mongo()
     if db is None:
@@ -123,6 +175,24 @@ async def hydrate_sqlite_from_mongo(
     )
     if orders:
         await upsert_orders(orders)
+
+    # Pull categories/flavors and mappings if handlers provided
+    if upsert_categories is not None:
+        cats = await asyncio.to_thread(lambda: list(db["categories"].find({})))
+        if cats:
+            await upsert_categories(cats)
+    if upsert_flavors is not None:
+        flvs = await asyncio.to_thread(lambda: list(db["flavors"].find({})))
+        if flvs:
+            await upsert_flavors(flvs)
+    if upsert_item_category is not None:
+        ic = await asyncio.to_thread(lambda: list(db["item_category"].find({})))
+        if ic:
+            await upsert_item_category(ic)
+    if upsert_item_flavor is not None:
+        ifl = await asyncio.to_thread(lambda: list(db["item_flavor"].find({})))
+        if ifl:
+            await upsert_item_flavor(ifl)
 
 
 # ---- Helpers for direct sync triggers ----

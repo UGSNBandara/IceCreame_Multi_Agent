@@ -30,8 +30,28 @@ from .CRUD.db import (
     sqlite_upsert_menu,
     sqlite_upsert_orders,
     sqlite_clear_all,
+    list_categories,
+    add_category,
+    update_category,
+    delete_category,
+    list_flavors,
+    add_flavor,
+    update_flavor,
+    delete_flavor,
+    list_item_categories,
+    add_item_category,
+    remove_item_category,
+    list_item_flavors,
+    add_item_flavor,
+    remove_item_flavor,
+    sqlite_upsert_categories,
+    sqlite_upsert_flavors,
+    sqlite_upsert_item_category,
+    sqlite_upsert_item_flavor,
 )
 from .Sync.mongo_sync import process_outbox_once, hydrate_sqlite_from_mongo
+from .DB_Tools.catalogTool import catalog_facets
+from .DB_Tools.catalogTool import catalog_search as tool_catalog_search
 
 from .tts_stt_api.piper_loader import synthesize, synthesize_to_file
 
@@ -124,6 +144,10 @@ async def _startup():
             upsert_menu=sqlite_upsert_menu,
             upsert_orders=sqlite_upsert_orders,
             is_sqlite_empty=_force_true,  # force hydrate on startup
+            upsert_categories=sqlite_upsert_categories,
+            upsert_flavors=sqlite_upsert_flavors,
+            upsert_item_category=sqlite_upsert_item_category,
+            upsert_item_flavor=sqlite_upsert_item_flavor,
         )
     except Exception as e:
         print(f"Hydration skipped/failed: {e}")
@@ -131,6 +155,12 @@ async def _startup():
     items = await fetch_menu_items()
     menu_cache.load(items)
     print(f"SQLite initialized. Menu loaded: {len(items)} items")
+    # Warm facets (no cache object yet; compute once to prime DB)
+    try:
+        _ = await catalog_facets()
+        print("Facets warmed")
+    except Exception as e:
+        print(f"Facet warm-up skipped/failed: {e}")
     # Start background outbox worker
     async def _worker():
         while True:
@@ -229,12 +259,183 @@ async def admin_rebuild_cache():
             upsert_menu=sqlite_upsert_menu,
             upsert_orders=sqlite_upsert_orders,
             is_sqlite_empty=lambda: True,  # force hydrate
+            upsert_categories=sqlite_upsert_categories,
+            upsert_flavors=sqlite_upsert_flavors,
+            upsert_item_category=sqlite_upsert_item_category,
+            upsert_item_flavor=sqlite_upsert_item_flavor,
         )
         items = await fetch_menu_items()
         menu_cache.load(items)
         return JSONResponse({"ok": True, "menu_items": len(items)})
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"rebuild_failed: {e}")
+
+@app.get("/admin/facets", response_class=JSONResponse)
+async def admin_facets():
+    try:
+        facets = await catalog_facets()
+        return JSONResponse({"ok": True, "facets": facets})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"facets_failed: {e}")
+
+# ---- Public Catalog Endpoints ----
+@app.get("/catalog/facets", response_class=JSONResponse)
+async def public_facets():
+    try:
+        facets = await catalog_facets()
+        return JSONResponse({"facets": facets})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"facets_failed: {e}")
+
+@app.get("/catalog/search", response_class=JSONResponse)
+async def public_search(categories: str | None = None, flavors: str | None = None, price_min: float | None = None, price_max: float | None = None, limit: int = 20):
+    try:
+        cats = [int(x) for x in categories.split(",")] if categories else None
+        flvs = [int(x) for x in flavors.split(",")] if flavors else None
+        data = await tool_catalog_search(categories=cats, flavors=flvs, price_min=price_min, price_max=price_max, limit=limit)
+        return JSONResponse({"items": data.get("items", []), "facets": data.get("facets", {})})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"search_failed: {e}")
+
+# ---- Catalog Admin Endpoints ----
+@app.get("/catalog/categories", response_class=JSONResponse)
+async def get_categories():
+    try:
+        rows = await list_categories()
+        return JSONResponse({"categories": rows})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"list_categories_failed: {e}")
+
+class NamePayload(BaseModel):
+    name: str
+
+@app.post("/catalog/categories", response_class=JSONResponse)
+async def create_category(payload: NamePayload):
+    try:
+        doc = await add_category(payload.name)
+        return JSONResponse(doc)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"create_category_failed: {e}")
+
+@app.put("/catalog/categories/{cat_id}", response_class=JSONResponse)
+async def edit_category(cat_id: int, payload: NamePayload):
+    try:
+        doc = await update_category(cat_id, payload.name)
+        if doc.get("state") == "not_found":
+            raise HTTPException(status_code=404, detail="Category not found")
+        return JSONResponse(doc)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"update_category_failed: {e}")
+
+@app.delete("/catalog/categories/{cat_id}", response_class=JSONResponse)
+async def remove_category(cat_id: int):
+    try:
+        doc = await delete_category(cat_id)
+        if doc.get("state") == "not_found":
+            raise HTTPException(status_code=404, detail="Category not found")
+        return JSONResponse(doc)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"delete_category_failed: {e}")
+
+@app.get("/catalog/flavors", response_class=JSONResponse)
+async def get_flavors():
+    try:
+        rows = await list_flavors()
+        return JSONResponse({"flavors": rows})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"list_flavors_failed: {e}")
+
+@app.post("/catalog/flavors", response_class=JSONResponse)
+async def create_flavor(payload: NamePayload):
+    try:
+        doc = await add_flavor(payload.name)
+        return JSONResponse(doc)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"create_flavor_failed: {e}")
+
+@app.put("/catalog/flavors/{flv_id}", response_class=JSONResponse)
+async def edit_flavor(flv_id: int, payload: NamePayload):
+    try:
+        doc = await update_flavor(flv_id, payload.name)
+        if doc.get("state") == "not_found":
+            raise HTTPException(status_code=404, detail="Flavor not found")
+        return JSONResponse(doc)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"update_flavor_failed: {e}")
+
+@app.delete("/catalog/flavors/{flv_id}", response_class=JSONResponse)
+async def remove_flavor(flv_id: int):
+    try:
+        doc = await delete_flavor(flv_id)
+        if doc.get("state") == "not_found":
+            raise HTTPException(status_code=404, detail="Flavor not found")
+        return JSONResponse(doc)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"delete_flavor_failed: {e}")
+
+@app.get("/catalog/item/{item_id}/categories", response_class=JSONResponse)
+async def get_item_cats(item_id: int):
+    try:
+        rows = await list_item_categories(item_id)
+        return JSONResponse({"item_id": item_id, "categories": rows})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"item_categories_failed: {e}")
+
+@app.post("/catalog/item/{item_id}/categories/{cat_id}", response_class=JSONResponse)
+async def add_item_cat(item_id: int, cat_id: int):
+    try:
+        doc = await add_item_category(item_id, cat_id)
+        return JSONResponse(doc)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"add_item_category_failed: {e}")
+
+@app.delete("/catalog/item/{item_id}/categories/{cat_id}", response_class=JSONResponse)
+async def del_item_cat(item_id: int, cat_id: int):
+    try:
+        doc = await remove_item_category(item_id, cat_id)
+        if doc.get("state") == "not_found":
+            raise HTTPException(status_code=404, detail="Mapping not found")
+        return JSONResponse(doc)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"delete_item_category_failed: {e}")
+
+@app.get("/catalog/item/{item_id}/flavors", response_class=JSONResponse)
+async def get_item_flvs(item_id: int):
+    try:
+        rows = await list_item_flavors(item_id)
+        return JSONResponse({"item_id": item_id, "flavors": rows})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"item_flavors_failed: {e}")
+
+@app.post("/catalog/item/{item_id}/flavors/{flv_id}", response_class=JSONResponse)
+async def add_item_flv(item_id: int, flv_id: int):
+    try:
+        doc = await add_item_flavor(item_id, flv_id)
+        return JSONResponse(doc)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"add_item_flavor_failed: {e}")
+
+@app.delete("/catalog/item/{item_id}/flavors/{flv_id}", response_class=JSONResponse)
+async def del_item_flv(item_id: int, flv_id: int):
+    try:
+        doc = await remove_item_flavor(item_id, flv_id)
+        if doc.get("state") == "not_found":
+            raise HTTPException(status_code=404, detail="Mapping not found")
+        return JSONResponse(doc)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"delete_item_flavor_failed: {e}")
 
 
 
