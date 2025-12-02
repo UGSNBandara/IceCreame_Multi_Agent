@@ -67,5 +67,4 @@ IceCreamAgent = Agent(
         get_cart_with_total,
         add_order,
     ],
-    api_key=os.getenv("GOOGLE_API_KEY"),
 )
