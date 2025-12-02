@@ -297,7 +297,7 @@ async def get_menu_index(session_id: str):
 async def list_menu_items():
     try:
         items = await fetch_menu_items()
-        return JSONResponse({"items": items, "count": len(items)})
+        return JSONResponse({"items": [item.dict() for item in items], "count": len(items)})
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch menu items: {e}")
 
