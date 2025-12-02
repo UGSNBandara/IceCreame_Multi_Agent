@@ -14,7 +14,7 @@ async def fetch_menu_items() -> List[MenuItemDTO]:
                     id=int(r["id"]),
                     name=str(r["name"]),
                     description=str(r.get("description", "")),
-                    price=float(r.get("price", 0.0)),
+                    price=float(r.get("price") or 0.0),
                 )
             )
         except Exception:
