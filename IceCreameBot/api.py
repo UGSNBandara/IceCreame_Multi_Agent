@@ -109,6 +109,10 @@ class OrderStatusUpdate(BaseModel):
 async def _startup():
     print("=== STARTUP BEGIN ===")
     await init_db()
+    
+    # Async helper to force hydration condition
+    async def _force_true():
+        return True
     # Clear existing local cache to avoid stale seed items
     try:
         await sqlite_clear_all()
@@ -119,7 +123,7 @@ async def _startup():
         await hydrate_sqlite_from_mongo(
             upsert_menu=sqlite_upsert_menu,
             upsert_orders=sqlite_upsert_orders,
-            is_sqlite_empty=lambda: True,  # force hydrate on startup
+            is_sqlite_empty=_force_true,  # force hydrate on startup
         )
     except Exception as e:
         print(f"Hydration skipped/failed: {e}")
