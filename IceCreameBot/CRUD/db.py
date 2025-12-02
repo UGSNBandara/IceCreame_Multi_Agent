@@ -84,6 +84,13 @@ async def init_db() -> None:
     pass
   await conn.commit()
 
+async def sqlite_clear_all():
+  """Remove all rows from menu and orders (keeps schema)."""
+  conn = await get_db()
+  await conn.execute("DELETE FROM menu")
+  await conn.execute("DELETE FROM orders")
+  await conn.commit()
+
 async def seed_menu_if_empty() -> None:
   conn = await get_db()
   cur = await conn.execute("SELECT COUNT(1) AS c FROM menu")

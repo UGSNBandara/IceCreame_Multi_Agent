@@ -24,13 +24,12 @@ from .DB_Tools.menustateTool import get_menu_state
 from .CRUD.OrderCrud import list_orders, update_order_status, OrderStatus, get_order_by_id
 from .CRUD.db import (
     init_db,
-    seed_menu_if_empty,
     outbox_fetch,
     outbox_mark_done,
     outbox_mark_error,
-    sqlite_is_empty,
     sqlite_upsert_menu,
     sqlite_upsert_orders,
+    sqlite_clear_all,
 )
 from .Sync.mongo_sync import process_outbox_once, hydrate_sqlite_from_mongo
 
@@ -110,19 +109,24 @@ class OrderStatusUpdate(BaseModel):
 async def _startup():
     print("=== STARTUP BEGIN ===")
     await init_db()
-    await seed_menu_if_empty()
-    items = await fetch_menu_items()
-    menu_cache.load(items)
-    print(f"SQLite initialized. Menu loaded: {len(items)} items")
-    # Try hydrate from Mongo if SQLite empty
+    # Clear existing local cache to avoid stale seed items
+    try:
+        await sqlite_clear_all()
+    except Exception as e:
+        print(f"Clear cache skipped/failed: {e}")
+    # Hydrate from Mongo on every startup (source of truth)
     try:
         await hydrate_sqlite_from_mongo(
             upsert_menu=sqlite_upsert_menu,
             upsert_orders=sqlite_upsert_orders,
-            is_sqlite_empty=sqlite_is_empty,
+            is_sqlite_empty=lambda: True,  # force hydrate on startup
         )
     except Exception as e:
         print(f"Hydration skipped/failed: {e}")
+    # Load menu into cache after hydration
+    items = await fetch_menu_items()
+    menu_cache.load(items)
+    print(f"SQLite initialized. Menu loaded: {len(items)} items")
     # Start background outbox worker
     async def _worker():
         while True:
@@ -285,6 +289,14 @@ async def get_menu_index(session_id: str):
     return JSONResponse({"index": indexx})
 
 # ---- Menu CRUD Endpoints ----
+@app.get("/menu/items", response_class=JSONResponse)
+async def list_menu_items():
+    try:
+        items = await fetch_menu_items()
+        return JSONResponse({"items": items, "count": len(items)})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch menu items: {e}")
+
 @app.post("/menu/items", response_class=JSONResponse)
 async def create_menu_item(payload: MenuCreateRequest):
     try:
