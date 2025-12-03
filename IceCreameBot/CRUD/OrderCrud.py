@@ -17,9 +17,8 @@ def _stringify_id(doc: Dict[str, Any]) -> Dict[str, Any]:
 
 
 class OrderStatus(str, Enum):
-    ADDED = "added"
-    PROCESSING = "processing"
-    COMPLETED = "completed"
+    PENDING = "pending"
+    DONE = "done"
 
 async def add_order(
     customer_name: str,
@@ -37,7 +36,7 @@ async def add_order(
             (customer_name or "").strip() or "Guest",
             json.dumps(items),
             float(total),
-            OrderStatus.ADDED.value,
+            OrderStatus.PENDING.value,
             datetime.now(timezone.utc).isoformat(),
         ),
     )

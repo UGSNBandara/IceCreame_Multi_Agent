@@ -7,6 +7,9 @@ class MenuItemDTO(BaseModel):
     name: str
     description: str
     price: float
+    category: str
+    flavor: str
+    available_count: int
 
 @dataclass
 class MenuCatalog:

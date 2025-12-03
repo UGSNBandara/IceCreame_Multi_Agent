@@ -4,7 +4,8 @@ Env vars (optional):
   SQLITE_DB_PATH: path to sqlite file (default: icecream.db)
 
 Tables:
-  menu(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, description TEXT, price REAL)
+    menu(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, description TEXT, price REAL,
+      category TEXT, flavor TEXT, available_count INTEGER)
   orders(id INTEGER PRIMARY KEY AUTOINCREMENT, customer_name TEXT, items TEXT, total REAL,
      status TEXT, created_at TEXT)
 
@@ -39,6 +40,9 @@ async def init_db() -> None:
       name TEXT NOT NULL,
       description TEXT DEFAULT '',
       price REAL NOT NULL,
+      category TEXT DEFAULT '',
+      flavor TEXT DEFAULT '',
+      available_count INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT DEFAULT ''
     )
     """
@@ -50,7 +54,7 @@ async def init_db() -> None:
       customer_name TEXT NOT NULL,
       items TEXT NOT NULL, -- JSON
       total REAL NOT NULL,
-      status TEXT NOT NULL DEFAULT 'added',
+      status TEXT NOT NULL DEFAULT 'pending',
       created_at TEXT NOT NULL,
       updated_at TEXT DEFAULT ''
     )
@@ -113,6 +117,19 @@ async def init_db() -> None:
   # Try to add columns if older DB exists
   try:
     await conn.execute("ALTER TABLE menu ADD COLUMN updated_at TEXT DEFAULT ''")
+  except Exception:
+    pass
+  # Backfill new strict-enum columns if missing
+  try:
+    await conn.execute("ALTER TABLE menu ADD COLUMN category TEXT DEFAULT ''")
+  except Exception:
+    pass
+  try:
+    await conn.execute("ALTER TABLE menu ADD COLUMN flavor TEXT DEFAULT ''")
+  except Exception:
+    pass
+  try:
+    await conn.execute("ALTER TABLE menu ADD COLUMN available_count INTEGER NOT NULL DEFAULT 0")
   except Exception:
     pass
   try:
@@ -197,18 +214,44 @@ async def sqlite_upsert_menu(docs: list[dict]):
       row = await cur.fetchone()
       if row:
         await conn.execute(
-          "UPDATE menu SET name=?, description=?, price=?, updated_at=? WHERE id=?",
-          (d.get("name",""), d.get("description",""), float(d.get("price",0.0)), d.get("updated_at",""), int(d["id"]))
+          "UPDATE menu SET name=?, description=?, price=?, category=?, flavor=?, available_count=?, updated_at=? WHERE id=?",
+          (
+            d.get("name",""),
+            d.get("description",""),
+            float(d.get("price",0.0)),
+            d.get("category",""),
+            d.get("flavor",""),
+            int(d.get("available_count", 0)),
+            d.get("updated_at",""),
+            int(d["id"]) 
+          )
         )
       else:
         await conn.execute(
-          "INSERT INTO menu(id, name, description, price, updated_at) VALUES (?,?,?,?,?)",
-          (int(d["id"]), d.get("name",""), d.get("description",""), float(d.get("price",0.0)), d.get("updated_at",""))
+          "INSERT INTO menu(id, name, description, price, category, flavor, available_count, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+          (
+            int(d["id"]),
+            d.get("name",""),
+            d.get("description",""),
+            float(d.get("price",0.0)),
+            d.get("category",""),
+            d.get("flavor",""),
+            int(d.get("available_count", 0)),
+            d.get("updated_at","")
+          )
         )
     else:
       await conn.execute(
-        "INSERT INTO menu(name, description, price, updated_at) VALUES (?,?,?,?)",
-        (d.get("name",""), d.get("description",""), float(d.get("price",0.0)), d.get("updated_at",""))
+        "INSERT INTO menu(name, description, price, category, flavor, available_count, updated_at) VALUES (?,?,?,?,?,?,?)",
+        (
+          d.get("name",""),
+          d.get("description",""),
+          float(d.get("price",0.0)),
+          d.get("category",""),
+          d.get("flavor",""),
+          int(d.get("available_count", 0)),
+          d.get("updated_at","")
+        )
       )
   await conn.commit()
 

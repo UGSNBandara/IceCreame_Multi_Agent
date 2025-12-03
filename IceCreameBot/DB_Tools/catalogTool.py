@@ -1,16 +1,30 @@
 from typing import Any, Dict, List, Optional, Tuple
 from ..CRUD.db import get_db
 
+# Strict enums for simplicity (can be edited in code as needed)
+CATEGORIES: List[str] = ["Cone", "Cup", "Sundae", "Stick"]
+FLAVORS: List[str] = ["Vanilla", "Chocolate", "Strawberry", "Mint"]
+
 async def catalog_facets() -> Dict[str, Any]:
     conn = await get_db()
     facets: Dict[str, Any] = {"categories": [], "flavors": [], "price_buckets": []}
-    # Categories
-    cur = await conn.execute("SELECT c.id, c.name, COUNT(ic.item_id) AS count FROM categories c LEFT JOIN item_category ic ON c.id = ic.category_id GROUP BY c.id, c.name ORDER BY c.name ASC")
-    facets["categories"] = await cur.fetchall()
-    # Flavors
-    cur = await conn.execute("SELECT f.id, f.name, COUNT(ifl.item_id) AS count FROM flavors f LEFT JOIN item_flavor ifl ON f.id = ifl.flavor_id GROUP BY f.id, f.name ORDER BY f.name ASC")
-    facets["flavors"] = await cur.fetchall()
-    # Price buckets (0-100, 100-300, 300-600, 600+)
+
+    # Compute counts by scanning menu category/flavor strings
+    cur = await conn.execute("SELECT category, flavor FROM menu")
+    rows = await cur.fetchall()
+    cat_counts: Dict[str, int] = {c: 0 for c in CATEGORIES}
+    flv_counts: Dict[str, int] = {f: 0 for f in FLAVORS}
+    for r in rows:
+        c = str(r.get("category", ""))
+        f = str(r.get("flavor", ""))
+        if c in cat_counts:
+            cat_counts[c] += 1
+        if f in flv_counts:
+            flv_counts[f] += 1
+    facets["categories"] = [{"name": k, "count": v} for k, v in sorted(cat_counts.items())]
+    facets["flavors"] = [{"name": k, "count": v} for k, v in sorted(flv_counts.items())]
+
+    # Price buckets
     buckets: List[Tuple[str, float, Optional[float]]] = [
         ("0-100", 0, 100),
         ("100-300", 100, 300),
@@ -29,8 +43,8 @@ async def catalog_facets() -> Dict[str, Any]:
     return facets
 
 async def catalog_search(
-    categories: Optional[List[int]] = None,
-    flavors: Optional[List[int]] = None,
+    categories: Optional[List[str]] = None,
+    flavors: Optional[List[str]] = None,
     price_min: Optional[float] = None,
     price_max: Optional[float] = None,
     limit: int = 20,
@@ -38,31 +52,22 @@ async def catalog_search(
     conn = await get_db()
     where = ["1=1"]
     params: List[Any] = []
-    join_cat = False
-    join_flv = False
     if price_min is not None:
-        where.append("m.price >= ?")
+        where.append("price >= ?")
         params.append(float(price_min))
     if price_max is not None:
-        where.append("m.price <= ?")
+        where.append("price <= ?")
         params.append(float(price_max))
     if categories:
-        join_cat = True
         placeholders = ",".join(["?"] * len(categories))
-        where.append(f"ic.category_id IN ({placeholders})")
-        params.extend([int(x) for x in categories])
+        where.append(f"category IN ({placeholders})")
+        params.extend([str(x) for x in categories])
     if flavors:
-        join_flv = True
         placeholders = ",".join(["?"] * len(flavors))
-        where.append(f"ifl.flavor_id IN ({placeholders})")
-        params.extend([int(x) for x in flavors])
-    joins = []
-    if join_cat:
-        joins.append("LEFT JOIN item_category ic ON ic.item_id = m.id")
-    if join_flv:
-        joins.append("LEFT JOIN item_flavor ifl ON ifl.item_id = m.id")
-    # Return lightweight fields only (exclude description for shortlist)
-    sql = "SELECT DISTINCT m.id, m.name, m.price FROM menu m " + (" ".join(joins)) + " WHERE " + " AND ".join(where) + " ORDER BY m.price ASC, m.id ASC LIMIT ?"
+        where.append(f"flavor IN ({placeholders})")
+        params.extend([str(x) for x in flavors])
+    # Unsorted instantaneous list (frontend sorts if needed)
+    sql = "SELECT id, name, price, available_count FROM menu WHERE " + " AND ".join(where) + " LIMIT ?"
     params.append(int(limit))
     cur = await conn.execute(sql, tuple(params))
     items = await cur.fetchall()

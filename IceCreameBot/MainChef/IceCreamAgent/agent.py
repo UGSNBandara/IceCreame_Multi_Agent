@@ -13,13 +13,11 @@ from ...DB_Tools.cartTool import (
     get_cart_with_total,
 )
 from ...DB_Tools.orderTool import add_order
-from ...DB_Tools.catalogTool import catalog_search, catalog_facets
+from ...DB_Tools.catalogTool import catalog_search
 from ...DB_Tools.pricingTool import plan_bundle
 
 load_dotenv()
 
-# Expected envs:
-#   GOOGLE_API_KEY=...  (get from https://aistudio.google.com/app/apikey)
 GEMINI_MODEL_ID = os.getenv("GEMINI_MODEL_ID", "gemini-2.5-flash-lite")
 
 instruction = """
@@ -34,14 +32,13 @@ Pricing
 - Share prices only when asked; format: 1500 rupee (no decimals).
 
 Scope
-- Discovery via facets (categories, flavors). Shortlist via filters. Details on demand.
+- Discovery uses fixed enums in instructions: categories = [Cone, Cup, Sundae, Stick], flavors = [Vanilla, Chocolate, Strawberry, Mint]. Shortlist via filters (no server facets). Details on demand.
 - Budget bundles, cart, checkout. No complaints.
 
 Tools
-- catalog_facets (list categories and flavors only)
-- catalog_search (filters by categories, flavors, price ranges; no descriptions)
+- catalog_search (filters by categories, flavors, price ranges; returns lightweight list)
 - get_item_by_id(item_id) (fetch full description for a specific item)
-- plan_bundle (budget per person/total + people)
+- plan_bundle (returns up to 2 plans: cheapest and variety)
 - add_item_to_cart, remove_item_from_cart, clear_cart
 - get_cart_with_total (always for totals)
 - add_order(customer_name, items, total)
@@ -49,7 +46,7 @@ Tools
 Rules
 - Never invent items or prices; call tools first.
 - When asked "what do you have?":
-    - Call catalog_facets and say categories and flavors only.
+    - Say available categories and flavors from the fixed list.
     - Do not list items or prices yet.
 - When user names category/flavor/price:
     - Call catalog_search. List 2–3 item names only (no descriptions, no prices).
@@ -75,7 +72,6 @@ IceCreamAgent = Agent(
     tools=[
         get_menu_items,
         catalog_search,
-        catalog_facets,
         get_item_by_id,
         plan_bundle,
         add_item_to_cart,
