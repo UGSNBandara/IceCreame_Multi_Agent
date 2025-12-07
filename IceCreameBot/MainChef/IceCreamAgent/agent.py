@@ -16,8 +16,6 @@ from ...DB_Tools.cartTool import (
 from ...DB_Tools.orderTool import add_order
 from ...DB_Tools.catalogTool import catalog_search
 from ...DB_Tools.pricingTool import plan_bundle
-from ...DB_Tools.catalogTool import catalog_search_tool
-from ...DB_Tools.pricingTool import plan_bundle_tool
 from ..context_services import (
     SessionContextReader,
     GlobalContextReader,
