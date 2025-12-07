@@ -80,29 +80,7 @@ Errors
 - Never invent items: always verify with catalog_search or get_item_by_id before adding to cart.
 """
 
-IceCreamAgent = Agent(
-    name="IceCreamAgent",
-    model=GEMINI_MODEL_ID,
-    description="Single agent for browsing, cart, and checkout for an ice cream shop.",
-    instruction=instruction,
-    tools=[
-        get_menu_items,
-        catalog_search,
-        get_item_by_id,
-        plan_bundle,
-        # Context-aware helpers
-        # Named tool functions defined below
-        get_top_categories_for_session,
-        increment_category_popularity,
-        get_cached_categories,
-        get_cached_flavors,
-        add_item_to_cart,
-        remove_item_from_cart,
-        clear_cart,
-        get_cart_with_total,
-        add_order,
-    ],
-)
+# Agent is constructed after tool functions are defined below
 
 # ---- Context wiring (minimal, non-blocking) ----
 _session_reader = SessionContextReader()
@@ -162,3 +140,26 @@ def get_cached_categories():
 
 def get_cached_flavors():
     return _cf_cache.get_flavors()
+
+IceCreamAgent = Agent(
+    name="IceCreamAgent",
+    model=GEMINI_MODEL_ID,
+    description="Single agent for browsing, cart, and checkout for an ice cream shop.",
+    instruction=instruction,
+    tools=[
+        get_menu_items,
+        catalog_search,
+        get_item_by_id,
+        plan_bundle,
+        # Context-aware helpers
+        get_top_categories_for_session,
+        increment_category_popularity,
+        get_cached_categories,
+        get_cached_flavors,
+        add_item_to_cart,
+        remove_item_from_cart,
+        clear_cart,
+        get_cart_with_total,
+        add_order,
+    ],
+)
