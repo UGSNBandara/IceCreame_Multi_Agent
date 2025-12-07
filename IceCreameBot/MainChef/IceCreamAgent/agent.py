@@ -100,7 +100,7 @@ try:
 except Exception:
     pass
 
-def get_top_categories_for_session():
+async def get_top_categories_for_session():
     """Return top categories for the computed segment using session-scoped context."""
     session_id = get_current_session()
     ctx = _session_reader.read(session_id) if session_id else {"age_group": None, "gender_guess": None}
@@ -109,29 +109,23 @@ def get_top_categories_for_session():
     temp_bucket = _global_reader.temperature_bucket()
     tod = _global_reader.time_of_day()
     segment_key = make_segment_key(age, gender, temp_bucket, tod)
-    async def _run():
-        tops = await _pop_store.get_top_categories(segment_key, k=3)
-        if not tops:
-            tops = await _pop_store.get_global_top_categories(k=3)
-        # Emit a lightweight context snapshot for analytics
-        _analytics.emit("session_context_snapshot", {
-            "session_id": session_id,
-            "segment_key": segment_key,
-            "age_group": age,
-            "gender_guess": gender,
-            "time_of_day": tod,
-            "temperature_bucket": temp_bucket,
-        })
-        return tops
-    # Run async helper in a blocking way compatible with current agent tools
-    return asyncio.run(_run())
+    tops = await _pop_store.get_top_categories(segment_key, k=3)
+    if not tops:
+        tops = await _pop_store.get_global_top_categories(k=3)
+    _analytics.emit("session_context_snapshot", {
+        "session_id": session_id,
+        "segment_key": segment_key,
+        "age_group": age,
+        "gender_guess": gender,
+        "time_of_day": tod,
+        "temperature_bucket": temp_bucket,
+    })
+    return tops
 
-def increment_category_popularity(segment_key: str, category: str):
-    async def _run():
-        await _pop_store.increment(segment_key, category)
-        _analytics.emit("selection", {"segment_key": segment_key, "category": category})
-        return {"ok": True}
-    return asyncio.run(_run())
+async def increment_category_popularity(segment_key: str, category: str):
+    await _pop_store.increment(segment_key, category)
+    _analytics.emit("selection", {"segment_key": segment_key, "category": category})
+    return {"ok": True}
 
 def get_cached_categories():
     return _cf_cache.get_categories()
