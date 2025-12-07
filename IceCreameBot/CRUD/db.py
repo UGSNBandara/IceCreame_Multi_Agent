@@ -77,42 +77,28 @@ async def init_db() -> None:
   )
   await conn.commit()
 
-  # Facet tables for categories and flavors (many-to-many)
+  # Category popularity (segment-level and global)
   await conn.execute(
     """
-    CREATE TABLE IF NOT EXISTS categories (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL UNIQUE
+    CREATE TABLE IF NOT EXISTS category_popularity (
+      segment_key TEXT NOT NULL,
+      category TEXT NOT NULL,
+      count INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (segment_key, category)
     )
     """
   )
   await conn.execute(
     """
-    CREATE TABLE IF NOT EXISTS flavors (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL UNIQUE
-    )
-    """
-  )
-  await conn.execute(
-    """
-    CREATE TABLE IF NOT EXISTS item_category (
-      item_id INTEGER NOT NULL,
-      category_id INTEGER NOT NULL,
-      PRIMARY KEY (item_id, category_id)
-    )
-    """
-  )
-  await conn.execute(
-    """
-    CREATE TABLE IF NOT EXISTS item_flavor (
-      item_id INTEGER NOT NULL,
-      flavor_id INTEGER NOT NULL,
-      PRIMARY KEY (item_id, flavor_id)
+    CREATE TABLE IF NOT EXISTS global_category_popularity (
+      category TEXT NOT NULL PRIMARY KEY,
+      count INTEGER NOT NULL DEFAULT 0
     )
     """
   )
   await conn.commit()
+
+  # Removed facet tables: categories, flavors, item_category, item_flavor (using enum strings on menu instead)
 
   # Try to add columns if older DB exists
   try:
@@ -143,6 +129,8 @@ async def sqlite_clear_all():
   conn = await get_db()
   await conn.execute("DELETE FROM menu")
   await conn.execute("DELETE FROM orders")
+  await conn.execute("DELETE FROM category_popularity")
+  await conn.execute("DELETE FROM global_category_popularity")
   await conn.commit()
 
 async def seed_menu_if_empty() -> None:
@@ -289,189 +277,40 @@ async def sqlite_upsert_orders(docs: list[dict]):
   await conn.commit()
 
 # ---- Catalog CRUD: Categories ----
-async def list_categories() -> list[dict]:
-  conn = await get_db()
-  cur = await conn.execute("SELECT id, name FROM categories ORDER BY name ASC")
-  return await cur.fetchall()
-
-async def add_category(name: str) -> dict:
-  conn = await get_db()
-  await conn.execute("INSERT INTO categories(name) VALUES (?)", (name,))
-  await conn.commit()
-  cur = await conn.execute("SELECT id, name FROM categories WHERE name = ?", (name,))
-  row = await cur.fetchone()
-  doc = {"id": row["id"], "name": row["name"]}
-  await outbox_enqueue("category", "upsert", doc)
-  return doc
-
-async def update_category(cat_id: int, name: str) -> dict:
-  conn = await get_db()
-  cur = await conn.execute("UPDATE categories SET name=? WHERE id=?", (name, int(cat_id)))
-  await conn.commit()
-  if cur.rowcount == 0:
-    return {"state": "not_found"}
-  cur = await conn.execute("SELECT id, name FROM categories WHERE id = ?", (int(cat_id),))
-  row = await cur.fetchone()
-  doc = {"id": row["id"], "name": row["name"]}
-  await outbox_enqueue("category", "upsert", doc)
-  return doc
-
-async def delete_category(cat_id: int) -> dict:
-  conn = await get_db()
-  cur = await conn.execute("DELETE FROM categories WHERE id=?", (int(cat_id),))
-  await conn.execute("DELETE FROM item_category WHERE category_id=?", (int(cat_id),))
-  await conn.commit()
-  if cur.rowcount == 0:
-    return {"state": "not_found"}
-  await outbox_enqueue("category", "delete", {"id": int(cat_id)})
-  return {"state": "deleted", "id": int(cat_id)}
+# Categories/flavors CRUD removed (using enum fields in menu; no separate facet tables)
 
 # ---- Catalog CRUD: Flavors ----
-async def list_flavors() -> list[dict]:
-  conn = await get_db()
-  cur = await conn.execute("SELECT id, name FROM flavors ORDER BY name ASC")
-  return await cur.fetchall()
+# Flavors CRUD removed
 
-async def add_flavor(name: str) -> dict:
-  conn = await get_db()
-  await conn.execute("INSERT INTO flavors(name) VALUES (?)", (name,))
-  await conn.commit()
-  cur = await conn.execute("SELECT id, name FROM flavors WHERE name = ?", (name,))
-  row = await cur.fetchone()
-  doc = {"id": row["id"], "name": row["name"]}
-  await outbox_enqueue("flavor", "upsert", doc)
-  return doc
+# Item mappings removed
 
-async def update_flavor(flv_id: int, name: str) -> dict:
-  conn = await get_db()
-  cur = await conn.execute("UPDATE flavors SET name=? WHERE id=?", (name, int(flv_id)))
-  await conn.commit()
-  if cur.rowcount == 0:
-    return {"state": "not_found"}
-  cur = await conn.execute("SELECT id, name FROM flavors WHERE id = ?", (int(flv_id),))
-  row = await cur.fetchone()
-  doc = {"id": row["id"], "name": row["name"]}
-  await outbox_enqueue("flavor", "upsert", doc)
-  return doc
+# Upserts for categories/flavors/mappings removed
 
-async def delete_flavor(flv_id: int) -> dict:
-  conn = await get_db()
-  cur = await conn.execute("DELETE FROM flavors WHERE id=?", (int(flv_id),))
-  await conn.execute("DELETE FROM item_flavor WHERE flavor_id=?", (int(flv_id),))
-  await conn.commit()
-  if cur.rowcount == 0:
-    return {"state": "not_found"}
-  await outbox_enqueue("flavor", "delete", {"id": int(flv_id)})
-  return {"state": "deleted", "id": int(flv_id)}
-
-# ---- Item mappings ----
-async def list_item_categories(item_id: int) -> list[dict]:
-  conn = await get_db()
-  cur = await conn.execute(
-    "SELECT c.id, c.name FROM item_category ic JOIN categories c ON c.id = ic.category_id WHERE ic.item_id=? ORDER BY c.name ASC",
-    (int(item_id),),
-  )
-  return await cur.fetchall()
-
-async def add_item_category(item_id: int, category_id: int) -> dict:
+# ---- Category popularity helpers ----
+async def pop_increment(segment_key: str, category: str) -> None:
   conn = await get_db()
   await conn.execute(
-    "INSERT OR IGNORE INTO item_category(item_id, category_id) VALUES (?,?)",
-    (int(item_id), int(category_id)),
+    "INSERT INTO category_popularity(segment_key, category, count) VALUES (?,?,1) ON CONFLICT(segment_key, category) DO UPDATE SET count = count + 1",
+    (segment_key, category),
+  )
+  await conn.execute(
+    "INSERT INTO global_category_popularity(category, count) VALUES (?,1) ON CONFLICT(category) DO UPDATE SET count = count + 1",
+    (category,),
   )
   await conn.commit()
-  doc = {"item_id": int(item_id), "category_id": int(category_id)}
-  await outbox_enqueue("item_category", "upsert", doc)
-  return doc
 
-async def remove_item_category(item_id: int, category_id: int) -> dict:
+async def pop_top_categories(segment_key: str, k: int = 3) -> list[dict]:
   conn = await get_db()
   cur = await conn.execute(
-    "DELETE FROM item_category WHERE item_id=? AND category_id=?",
-    (int(item_id), int(category_id)),
-  )
-  await conn.commit()
-  if cur.rowcount == 0:
-    return {"state": "not_found"}
-  await outbox_enqueue("item_category", "delete", {"item_id": int(item_id), "category_id": int(category_id)})
-  return {"state": "deleted"}
-
-async def list_item_flavors(item_id: int) -> list[dict]:
-  conn = await get_db()
-  cur = await conn.execute(
-    "SELECT f.id, f.name FROM item_flavor ifl JOIN flavors f ON f.id = ifl.flavor_id WHERE ifl.item_id=? ORDER BY f.name ASC",
-    (int(item_id),),
+    "SELECT category, count FROM category_popularity WHERE segment_key = ? ORDER BY count DESC, category ASC LIMIT ?",
+    (segment_key, int(k)),
   )
   return await cur.fetchall()
 
-async def add_item_flavor(item_id: int, flavor_id: int) -> dict:
-  conn = await get_db()
-  await conn.execute(
-    "INSERT OR IGNORE INTO item_flavor(item_id, flavor_id) VALUES (?,?)",
-    (int(item_id), int(flavor_id)),
-  )
-  await conn.commit()
-  doc = {"item_id": int(item_id), "flavor_id": int(flavor_id)}
-  await outbox_enqueue("item_flavor", "upsert", doc)
-  return doc
-
-async def remove_item_flavor(item_id: int, flavor_id: int) -> dict:
+async def pop_global_top_categories(k: int = 3) -> list[dict]:
   conn = await get_db()
   cur = await conn.execute(
-    "DELETE FROM item_flavor WHERE item_id=? AND flavor_id=?",
-    (int(item_id), int(flavor_id)),
+    "SELECT category, count FROM global_category_popularity ORDER BY count DESC, category ASC LIMIT ?",
+    (int(k),),
   )
-  await conn.commit()
-  if cur.rowcount == 0:
-    return {"state": "not_found"}
-  await outbox_enqueue("item_flavor", "delete", {"item_id": int(item_id), "flavor_id": int(flavor_id)})
-  return {"state": "deleted"}
-
-# ---- Upserts for hydration ----
-async def sqlite_upsert_categories(docs: list[dict]):
-  conn = await get_db()
-  for d in docs:
-    cid = int(d.get("id")) if d.get("id") is not None else None
-    if cid is None:
-      await conn.execute("INSERT OR IGNORE INTO categories(name) VALUES (?)", (d.get("name",""),))
-    else:
-      cur = await conn.execute("SELECT id FROM categories WHERE id=?", (cid,))
-      row = await cur.fetchone()
-      if row:
-        await conn.execute("UPDATE categories SET name=? WHERE id=?", (d.get("name",""), cid))
-      else:
-        await conn.execute("INSERT INTO categories(id, name) VALUES (?,?)", (cid, d.get("name","")))
-  await conn.commit()
-
-async def sqlite_upsert_flavors(docs: list[dict]):
-  conn = await get_db()
-  for d in docs:
-    fid = int(d.get("id")) if d.get("id") is not None else None
-    if fid is None:
-      await conn.execute("INSERT OR IGNORE INTO flavors(name) VALUES (?)", (d.get("name",""),))
-    else:
-      cur = await conn.execute("SELECT id FROM flavors WHERE id=?", (fid,))
-      row = await cur.fetchone()
-      if row:
-        await conn.execute("UPDATE flavors SET name=? WHERE id=?", (d.get("name",""), fid))
-      else:
-        await conn.execute("INSERT INTO flavors(id, name) VALUES (?,?)", (fid, d.get("name","")))
-  await conn.commit()
-
-async def sqlite_upsert_item_category(docs: list[dict]):
-  conn = await get_db()
-  for d in docs:
-    await conn.execute(
-      "INSERT OR IGNORE INTO item_category(item_id, category_id) VALUES (?,?)",
-      (int(d.get("item_id")), int(d.get("category_id"))),
-    )
-  await conn.commit()
-
-async def sqlite_upsert_item_flavor(docs: list[dict]):
-  conn = await get_db()
-  for d in docs:
-    await conn.execute(
-      "INSERT OR IGNORE INTO item_flavor(item_id, flavor_id) VALUES (?,?)",
-      (int(d.get("item_id")), int(d.get("flavor_id"))),
-    )
-  await conn.commit()
+  return await cur.fetchall()

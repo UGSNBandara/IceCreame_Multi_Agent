@@ -50,6 +50,9 @@ async def catalog_search(
     limit: int = 20,
 ) -> Dict[str, Any]:
     conn = await get_db()
+    # Validate filters against strict enums to avoid non-existent items
+    valid_categories = [c for c in (categories or []) if c in CATEGORIES]
+    valid_flavors = [f for f in (flavors or []) if f in FLAVORS]
     where = ["1=1"]
     params: List[Any] = []
     if price_min is not None:
@@ -58,17 +61,17 @@ async def catalog_search(
     if price_max is not None:
         where.append("price <= ?")
         params.append(float(price_max))
-    if categories:
-        placeholders = ",".join(["?"] * len(categories))
+    if valid_categories:
+        placeholders = ",".join(["?"] * len(valid_categories))
         where.append(f"category IN ({placeholders})")
-        params.extend([str(x) for x in categories])
-    if flavors:
-        placeholders = ",".join(["?"] * len(flavors))
+        params.extend([str(x) for x in valid_categories])
+    if valid_flavors:
+        placeholders = ",".join(["?"] * len(valid_flavors))
         where.append(f"flavor IN ({placeholders})")
-        params.extend([str(x) for x in flavors])
+        params.extend([str(x) for x in valid_flavors])
     # Unsorted instantaneous list (frontend sorts if needed)
     sql = "SELECT id, name, price, available_count FROM menu WHERE " + " AND ".join(where) + " LIMIT ?"
-    params.append(int(limit))
+    params.append(max(1, int(limit)))
     cur = await conn.execute(sql, tuple(params))
     items = await cur.fetchall()
     facets = await catalog_facets()

@@ -15,6 +15,8 @@ from google.adk.sessions import InMemorySessionService
 from google.adk.runners import Runner
 
 from .MainChef.IceCreamAgent.agent import IceCreamAgent
+from .MainChef.context_services import set_current_session
+from . import session_store as _session_store
 from .utils_for_api import call_agent_async
 
 from .CRUD.menuCrud import fetch_menu_items, add_menu_item, update_menu_item, delete_menu_item
@@ -86,6 +88,8 @@ class AgentRequest(BaseModel):
     session_id: Optional[str] = None
     speak: bool = False  # <-- only toggle
     voice: str = "en-US-JennyNeural"  # <-- voice selection
+    age_group: Optional[str] = None
+    gender_guess: Optional[str] = None
 
 class AgentResponse(BaseModel):
     response: str
@@ -160,6 +164,30 @@ async def health():
     from fastapi import Response
     return Response(content='{"ok": true}', media_type="application/json", headers={"X-App-Stamp": "custom123"})
 
+# ---- Debug: Session Context ----
+@app.get("/session/context/{session_id}", response_class=JSONResponse)
+async def get_session_context(session_id: str):
+    try:
+        ctx = _session_store.user_sessions.get(session_id)
+        if ctx is None:
+            # Return empty defaults for clarity
+            return JSONResponse({
+                "session_id": session_id,
+                "age_group": None,
+                "gender_guess": None,
+                "mood": None,
+                "exists": False,
+            })
+        return JSONResponse({
+            "session_id": session_id,
+            "age_group": ctx.get("age_group"),
+            "gender_guess": ctx.get("gender_guess"),
+            "mood": ctx.get("mood"),
+            "exists": True,
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch session context: {e}")
+
 # ---- Helpers ----
 async def _get_or_create_session(user_id: str, session_id: Optional[str], restart: bool) -> str:
     now = time.time()
@@ -201,6 +229,22 @@ async def _get_or_create_session(user_id: str, session_id: Optional[str], restar
 @app.post("/agent/", response_model=AgentResponse)
 async def interact_with_agent(req: AgentRequest):
     sid = await _get_or_create_session(req.user_id, req.session_id, req.restart)
+    # Update session-scoped context from frontend payload if provided
+    try:
+        set_current_session(sid)
+    except Exception:
+        pass
+    try:
+        ctx = _session_store.user_sessions.get(sid) or {}
+        # Only override if provided; keep previous values otherwise
+        if req.age_group is not None:
+            ctx["age_group"] = req.age_group
+        if req.gender_guess is not None:
+            ctx["gender_guess"] = req.gender_guess
+        # mood can be added later similarly
+        _session_store.user_sessions[sid] = ctx
+    except Exception:
+        pass
 
     try:
         reply_text = await call_agent_async(runner, req.user_id, sid, req.text)
@@ -248,6 +292,19 @@ async def interact_with_agent_text_only(req: AgentRequest):
     print("="*80 + "\n")
     
     sid = await _get_or_create_session(req.user_id, req.session_id, req.restart)
+    try:
+        set_current_session(sid)
+    except Exception:
+        pass
+    try:
+        ctx = _session_store.user_sessions.get(sid) or {}
+        if req.age_group is not None:
+            ctx["age_group"] = req.age_group
+        if req.gender_guess is not None:
+            ctx["gender_guess"] = req.gender_guess
+        _session_store.user_sessions[sid] = ctx
+    except Exception:
+        pass
     
     print(f"📌 Session ID: {sid}\n")
 
