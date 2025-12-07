@@ -38,7 +38,6 @@ from .DB_Tools.catalogTool import catalog_facets
 from .DB_Tools.catalogTool import catalog_search as tool_catalog_search
 
 from .tts_stt_api.piper_loader import synthesize, synthesize_to_file
-
 import google.generativeai as genai
 
 load_dotenv()
@@ -117,18 +116,16 @@ class OrderStatusUpdate(BaseModel):
 @app.on_event("startup")
 async def _startup():
     print("=== STARTUP BEGIN ===")
-    
-    # Check available models
+    # Configure Google Generative AI to use REST transport (Railway-friendly)
     try:
-        genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
-        print("--- AVAILABLE MODELS ON RAILWAY ---")
-        for m in genai.list_models():
-            if "gemma" in m.name:
-                print(f"ID: {m.name}")
-        print("-----------------------------------")
+        api_key = os.environ.get("GOOGLE_API_KEY")
+        if api_key:
+            genai.configure(api_key=api_key, transport="rest")
+            print("GenAI configured: transport=rest")
+        else:
+            print("GenAI not configured: GOOGLE_API_KEY missing")
     except Exception as e:
-        print(f"Model listing failed: {e}")
-    
+        print(f"GenAI configure failed: {e}")
     await init_db()
     
     # Async helper to force hydration condition
