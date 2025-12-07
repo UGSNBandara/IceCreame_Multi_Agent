@@ -49,7 +49,7 @@ Tools
 - catalog_search (filters by categories, flavors, price ranges; returns lightweight list)
 - get_item_by_id(item_id) (fetch full description for a specific item)
 - plan_bundle (returns up to 2 plans: cheapest and variety)
-- get_top_categories_for_session(age_group, gender_guess) -> returns top categories for this session's segment (session_id auto-injected)
+- get_top_categories_for_session() -> returns top categories for this session's segment (session_id auto-injected)
 - increment_category_popularity(segment_key, category) -> increments category counters for segment and global
 - get_cached_categories() -> returns distinct categories from cache
 - get_cached_flavors() -> returns distinct flavors from cache
@@ -99,15 +99,12 @@ try:
 except Exception:
     pass
 
-def get_top_categories_for_session(age_group: str | None = None, gender_guess: str | None = None):
-    """Return top categories for the computed segment.
-
-    age_group and gender_guess can be provided (from frontend payload) or read via SessionContextReader.
-    """
+def get_top_categories_for_session():
+    """Return top categories for the computed segment using session-scoped context."""
     session_id = get_current_session()
     ctx = _session_reader.read(session_id) if session_id else {"age_group": None, "gender_guess": None}
-    age = age_group if age_group is not None else ctx.get("age_group")
-    gender = gender_guess if gender_guess is not None else ctx.get("gender_guess")
+    age = ctx.get("age_group")
+    gender = ctx.get("gender_guess")
     temp_bucket = _global_reader.temperature_bucket()
     tod = _global_reader.time_of_day()
     segment_key = make_segment_key(age, gender, temp_bucket, tod)
