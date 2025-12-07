@@ -16,6 +16,8 @@ from ...DB_Tools.cartTool import (
 from ...DB_Tools.orderTool import add_order
 from ...DB_Tools.catalogTool import catalog_search
 from ...DB_Tools.pricingTool import plan_bundle
+from ...DB_Tools.catalogTool import catalog_search_tool
+from ...DB_Tools.pricingTool import plan_bundle_tool
 from ..context_services import (
     SessionContextReader,
     GlobalContextReader,
@@ -34,10 +36,10 @@ GEMINI_MODEL_ID = os.getenv("GEMINI_MODEL_ID", "gemini-2.5-flash-lite")
 instruction = """
 You are Sofia, a friendly ice cream shop cashier of the Magic Ice Cream.
 
-Tone
-- Speak naturally, warm and conversational.
+- Tools
+- catalog_search_tool(filters) (filters by categories, flavors, price ranges; returns lightweight list)
 - Use short, complete sentences (about 8–14 words).
-- Ask clear questions with natural phrasing.
+- plan_bundle_tool(payload) (returns up to 2 plans: cheapest and variety)
 
 Pricing
 - Share prices only when asked; format: 1500 rupee (no decimals).
@@ -47,7 +49,7 @@ Scope
 - Budget bundles, cart, checkout. No complaints.
 
 Tools
-- catalog_search (filters by categories, flavors, price ranges; returns lightweight list)
+- catalog_search_tool(filters) (filters by categories, flavors, price ranges; returns lightweight list)
 - get_item_by_id(item_id) (fetch full description for a specific item)
 - plan_bundle (returns up to 2 plans: cheapest and variety)
 - get_top_categories_for_session() -> returns top categories for this session's segment (session_id auto-injected)
@@ -65,7 +67,7 @@ Rules
     - Do not list items or prices yet.
 - When user names category/flavor/price:
     - First call get_top_categories_for_session to bias toward top categories for this customer segment.
-    - Then call catalog_search filtered to those categories (validation ensures only allowed enums). List 2–3 item names (no descriptions, no prices). Only suggest items returned by catalog_search.
+    - Then call catalog_search_tool with filters (validation ensures only allowed enums). List 2–3 item names (no descriptions, no prices). Only suggest items returned by catalog_search_tool.
 - When user asks for details of an item:
     - Call get_item_by_id and read a short description.
 - Confirm flavor and scoop count before adding to cart.
@@ -133,6 +135,47 @@ def get_cached_categories():
 def get_cached_flavors():
     return _cf_cache.get_flavors()
 
+async def catalog_search_tool(filters: dict):
+    try:
+        categories = filters.get("categories") or []
+        flavors = filters.get("flavors") or []
+        price_min = float(filters.get("price_min") or 0.0)
+        price_max = float(filters.get("price_max") or 0.0)
+        limit = int(filters.get("limit") or 20)
+    except Exception:
+        categories, flavors, price_min, price_max, limit = [], [], 0.0, 0.0, 20
+    return await catalog_search(categories, flavors, price_min, price_max, limit)
+
+async def plan_bundle_tool(payload: dict):
+    try:
+        budget_total = float(payload.get("budget_total") or 0.0)
+        budget_per_person = float(payload.get("budget_per_person") or 0.0)
+        people = int(payload.get("people") or 0)
+        flavors = payload.get("flavors") or []
+        categories = payload.get("categories") or []
+    except Exception:
+        budget_total, budget_per_person, people, flavors, categories = 0.0, 0.0, 0, [], []
+    return await plan_bundle(budget_total, budget_per_person, people, flavors, categories)
+async def catalog_search_tool(filters: dict):
+    """ADK-friendly wrapper for catalog_search.
+
+    Accepts a single object 'filters' with keys:
+      - categories: List[str] (optional)
+      - flavors: List[str] (optional)
+      - price_min: float (optional)
+      - price_max: float (optional)
+      - limit: int (optional)
+    Missing or zero/empty values are treated as no filter.
+    """
+    try:
+        categories = filters.get("categories") or []
+        flavors = filters.get("flavors") or []
+        price_min = float(filters.get("price_min") or 0.0)
+        price_max = float(filters.get("price_max") or 0.0)
+        limit = int(filters.get("limit") or 20)
+    except Exception:
+        categories, flavors, price_min, price_max, limit = [], [], 0.0, 0.0, 20
+    return await catalog_search(categories, flavors, price_min, price_max, limit)
 IceCreamAgent = Agent(
     name="IceCreamAgent",
     model=GEMINI_MODEL_ID,
@@ -140,9 +183,9 @@ IceCreamAgent = Agent(
     instruction=instruction,
     tools=[
         get_menu_items,
-        catalog_search,
+        catalog_search_tool,
         get_item_by_id,
-        plan_bundle,
+        plan_bundle_tool,
         # Context-aware helpers
         get_top_categories_for_session,
         increment_category_popularity,
