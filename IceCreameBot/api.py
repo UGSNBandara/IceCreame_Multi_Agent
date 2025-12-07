@@ -39,6 +39,8 @@ from .DB_Tools.catalogTool import catalog_search as tool_catalog_search
 
 from .tts_stt_api.piper_loader import synthesize, synthesize_to_file
 
+import google.generativeai as genai
+
 load_dotenv()
 
 APP_NAME = "Ice Cream Agent"
@@ -115,6 +117,18 @@ class OrderStatusUpdate(BaseModel):
 @app.on_event("startup")
 async def _startup():
     print("=== STARTUP BEGIN ===")
+    
+    # Check available models
+    try:
+        genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
+        print("--- AVAILABLE MODELS ON RAILWAY ---")
+        for m in genai.list_models():
+            if "gemma" in m.name:
+                print(f"ID: {m.name}")
+        print("-----------------------------------")
+    except Exception as e:
+        print(f"Model listing failed: {e}")
+    
     await init_db()
     
     # Async helper to force hydration condition
