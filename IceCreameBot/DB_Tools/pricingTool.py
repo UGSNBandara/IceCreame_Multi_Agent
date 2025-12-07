@@ -1,12 +1,12 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from ..CRUD.db import get_db
 
 async def plan_bundle(
-    budget_total: Optional[float] = None,
-    budget_per_person: Optional[float] = None,
-    people: Optional[int] = None,
-    flavors: Optional[List[str]] = None,
-    categories: Optional[List[str]] = None,
+    budget_total: float,
+    budget_per_person: float,
+    people: int,
+    flavors: List[str],
+    categories: List[str],
 ) -> Dict[str, Any]:
     """Suggest a simple bundle given budget and preferences.
     Strategy: choose cheapest items matching filters, fill quantities to meet people or budget.
@@ -49,13 +49,13 @@ async def plan_bundle(
                     break
                 continue
             qty = 0
-            if people and budget_total:
+            if (people or 0) > 0 and (budget_total or 0.0) > 0.0:
                 qty_by_people = max(0, remaining_people)
                 qty_by_budget = int(remaining_budget // price)
                 qty = min(qty_by_people, qty_by_budget)
-            elif people:
+            elif (people or 0) > 0:
                 qty = max(0, remaining_people)
-            elif budget_total:
+            elif (budget_total or 0.0) > 0.0:
                 qty = int(remaining_budget // price)
             else:
                 qty = 1
@@ -68,7 +68,7 @@ async def plan_bundle(
             total += price * take
             remaining_people = max(0, remaining_people - take)
             remaining_budget = max(0.0, remaining_budget - price * take)
-            if remaining_people == 0 and (budget_total is None or remaining_budget <= 0.01):
+            if remaining_people == 0 and ((budget_total or 0.0) <= 0.01):
                 break
             idx += 1
             if idx >= len(picks):
