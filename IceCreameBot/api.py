@@ -247,11 +247,15 @@ async def interact_with_agent(req: AgentRequest):
 @app.get("/cart/{session_id}", response_class=JSONResponse)
 async def get_cart(session_id: str):
     """Return the current cart for a given session_id with totals."""
+    from .Context.SessionContext import CURRENT_SID
+    token = CURRENT_SID.set(session_id)
     try:
-        cart = await get_cart_with_total(session_id)
+        cart = await get_cart_with_total()
         return JSONResponse({"session_id": session_id, "cart": cart})
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch cart: {e}")
+    finally:
+        CURRENT_SID.reset(token)
 # ---- Admin Sync Endpoints ----
 # Removed: automatic sync every ~5 seconds handles it; no manual triggers needed
 
