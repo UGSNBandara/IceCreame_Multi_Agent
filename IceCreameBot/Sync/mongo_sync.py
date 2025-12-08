@@ -209,6 +209,21 @@ async def direct_upsert_menu(docs: List[Dict[str, Any]]):
     await asyncio.to_thread(lambda: db["menu"].bulk_write(ops))
 
 
+async def hydrate_orders_from_mongo(upsert_orders, recent_days: int = 14):
+    """Hydrate orders only from MongoDB. Menu is now static/hardcoded."""
+    db = await get_mongo()
+    if db is None:
+        return
+    
+    from datetime import timedelta
+    since = datetime.now(timezone.utc) - timedelta(days=recent_days)
+    orders: List[Dict[str, Any]] = await asyncio.to_thread(
+        lambda: list(db["orders"].find({"created_at": {"$gte": since.isoformat()}}))
+    )
+    if orders:
+        await upsert_orders(orders)
+
+
 async def direct_upsert_orders(docs: List[Dict[str, Any]]):
     db = await get_mongo()
     if db is None or not docs:

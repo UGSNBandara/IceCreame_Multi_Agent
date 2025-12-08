@@ -2,7 +2,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
-from .MenuCache import menu_cache  # uses your RAM menu
+from ..MainChef.static_menu import get_static_cache
 
 @dataclass
 class CartLine:
@@ -44,18 +44,14 @@ class Cart:
     @staticmethod
     def _resolve_from_catalog(item_id: int) -> Dict[str, Any]:
         # raises CatalogNotLoaded or ItemNotFound
-        try:
-            cat = menu_cache.get()
-        except Exception:
-            raise CatalogNotLoaded()
-
-        dto = cat.by_item_id(int(item_id))
-        if not dto:
+        cache = get_static_cache()
+        item = cache.get_by_id(int(item_id))
+        if not item:
             raise ItemNotFound()
-
+        
         return {
-            "name": dto.name,
-            "price": float(dto.price),
+            "name": item["name"],
+            "price": float(item["price"]),
         }
 
     # ----- operations -----

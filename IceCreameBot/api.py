@@ -16,11 +16,9 @@ from google.adk.runners import Runner
 
 from .MainChef.IceCreamAgent.agent import IceCreamAgent
 from .MainChef.context_services import set_current_session
+from .MainChef.static_menu import get_static_cache
 from . import session_store as _session_store
 from .utils_for_api import call_agent_async
-
-from .CRUD.menuCrud import fetch_menu_items, add_menu_item, update_menu_item, delete_menu_item
-from .Cache.MenuCache import menu_cache
 
 from .DB_Tools.menustateTool import get_menu_state
 from .CRUD.OrderCrud import list_orders, update_order_status, OrderStatus, get_order_by_id
@@ -29,13 +27,9 @@ from .CRUD.db import (
     outbox_fetch,
     outbox_mark_done,
     outbox_mark_error,
-    sqlite_upsert_menu,
     sqlite_upsert_orders,
-    sqlite_clear_all,
 )
-from .Sync.mongo_sync import process_outbox_once, hydrate_sqlite_from_mongo
-from .DB_Tools.catalogTool import catalog_facets
-from .DB_Tools.catalogTool import catalog_search as tool_catalog_search
+from .Sync.mongo_sync import process_outbox_once, hydrate_orders_from_mongo
 
 from .tts_stt_api.piper_loader import synthesize, synthesize_to_file
 
@@ -111,40 +105,24 @@ class MenuUpdateRequest(BaseModel):
 class OrderStatusUpdate(BaseModel):
     status: OrderStatus
     
-# ---- Lifespan: load menu once ----
+# ---- Lifespan: init DB and sync orders only ----
 @app.on_event("startup")
 async def _startup():
     print("=== STARTUP BEGIN ===")
     await init_db()
     
-    # Async helper to force hydration condition
-    async def _force_true():
-        return True
-    # Clear existing local cache to avoid stale seed items
+    # Static menu is hardcoded, no need to hydrate from Mongo
+    print("Static menu: 18 items (Cup/Cone × Vanilla/Chocolate/Strawberry)")
+    
+    # Hydrate orders only from Mongo (menu is static)
     try:
-        await sqlite_clear_all()
-    except Exception as e:
-        print(f"Clear cache skipped/failed: {e}")
-    # Hydrate from Mongo on every startup (source of truth)
-    try:
-        await hydrate_sqlite_from_mongo(
-            upsert_menu=sqlite_upsert_menu,
+        await hydrate_orders_from_mongo(
             upsert_orders=sqlite_upsert_orders,
-            is_sqlite_empty=_force_true,  # force hydrate on startup
         )
     except Exception as e:
-        print(f"Hydration skipped/failed: {e}")
-    # Load menu into cache after hydration
-    items = await fetch_menu_items()
-    menu_cache.load(items)
-    print(f"SQLite initialized. Menu loaded: {len(items)} items")
-    # Warm facets (no cache object yet; compute once to prime DB)
-    try:
-        _ = await catalog_facets()
-        print("Facets warmed")
-    except Exception as e:
-        print(f"Facet warm-up skipped/failed: {e}")
-    # Start background outbox worker
+        print(f"Order hydration skipped/failed: {e}")
+    
+    # Start background outbox worker (orders only)
     async def _worker():
         while True:
             try:
@@ -348,46 +326,61 @@ async def get_menu_index(session_id: str):
     
     return JSONResponse({"index": indexx})
 
-# ---- Menu CRUD Endpoints ----
+# ---- Menu Endpoints (Static Cache) ----
 @app.get("/menu/items", response_class=JSONResponse)
 async def list_menu_items():
+    """Get all menu items with stock > 0 (for customers) or all items (for admin)."""
     try:
-        items = await fetch_menu_items()
-        return JSONResponse({"items": [item.dict() for item in items], "count": len(items)})
+        cache = get_static_cache()
+        items = cache.get_all_available()
+        return JSONResponse({"items": items, "count": len(items)})
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch menu items: {e}")
 
-@app.post("/menu/items", response_class=JSONResponse)
-async def create_menu_item(payload: MenuCreateRequest):
+@app.get("/menu/items/all", response_class=JSONResponse)
+async def list_all_menu_items():
+    """Get ALL menu items including zero stock (admin only)."""
     try:
-        doc = await add_menu_item(payload.name, payload.description, payload.price, payload.category, payload.flavor, payload.available_count)
-        return JSONResponse(doc)
+        cache = get_static_cache()
+        # Access internal items dict to get all items
+        items = list(cache._items.values())
+        return JSONResponse({"items": items, "count": len(items)})
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create menu item: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch all menu items: {e}")
 
-@app.put("/menu/items/{item_id}", response_class=JSONResponse)
-async def update_menu_item_endpoint(item_id: int, payload: MenuUpdateRequest):
+@app.get("/menu/items/{item_id}", response_class=JSONResponse)
+async def get_menu_item(item_id: int):
+    """Get single item by ID."""
     try:
-        doc = await update_menu_item(item_id, payload.available_count)
-        if doc.get("state") == "not_found":
+        cache = get_static_cache()
+        item = cache.get_by_id(item_id)
+        if not item:
             raise HTTPException(status_code=404, detail="Item not found")
-        return JSONResponse(doc)
+        return JSONResponse(item)
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update menu item: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch item: {e}")
 
-@app.delete("/menu/items/{item_id}", response_class=JSONResponse)
-async def delete_menu_item_endpoint(item_id: int):
+@app.put("/menu/items/{item_id}/stock", response_class=JSONResponse)
+async def update_stock(item_id: int, quantity: int):
+    """Update stock for an item (admin operation). Positive to add, negative to reduce."""
     try:
-        doc = await delete_menu_item(item_id)
-        if doc.get("state") == "not_found":
-            raise HTTPException(status_code=404, detail="Item not found")
-        return JSONResponse(doc)
+        cache = get_static_cache()
+        if quantity >= 0:
+            success = cache.increase_stock(item_id, quantity)
+        else:
+            success = cache.decrease_stock(item_id, abs(quantity))
+        
+        if not success:
+            raise HTTPException(status_code=400, detail="Invalid operation or insufficient stock")
+        
+        item = cache.get_by_id(item_id)
+        return JSONResponse({"success": True, "item": item})
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete menu item: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update stock: {e}")
 
 # ---- Order Endpoints ----
 @app.get("/orders", response_class=JSONResponse)
@@ -409,6 +402,17 @@ async def update_order_status_endpoint(order_id: str, payload: OrderStatusUpdate
             raise HTTPException(status_code=400, detail="Invalid order id")
         if state == "not_found":
             raise HTTPException(status_code=404, detail="Order not found")
+        
+        # Decrease stock when order is marked as done
+        if payload.status.value == "done":
+            cache = get_static_cache()
+            items = updated.get("items", [])
+            for item_line in items:
+                item_id = item_line.get("code")
+                qty = int(item_line.get("qty", 1))
+                if item_id:
+                    cache.decrease_stock(int(item_id), qty)
+        
         return JSONResponse(updated)
     except HTTPException:
         raise

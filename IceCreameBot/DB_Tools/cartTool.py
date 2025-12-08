@@ -3,19 +3,30 @@ from typing import Any, Dict, List
 from ..State.CartStore import cart_store 
 from ..Cache.Cart import Cart, CatalogNotLoaded, ItemNotFound
 from ..Context.SessionContext import CURRENT_SID
+from ..MainChef.static_menu import get_static_cache
 
 async def add_item_to_cart(item_id: int, qty: int) -> Dict[str, Any]:
     """Add a menu item to the session cart.
 
     Args:
         item_id (int): id of the item
-        qty (int): quantity to add (default 1)
+        qty (int): quantity to add
 
     Returns:
         dict: {"state":"success","cart":[...]} on success.
-              {"state":"catalog_not_loaded"} if menu not in RAM.
+              {"state":"insufficient_stock", "available": N} if not enough stock.
               {"state":"not_found"} if item id not in menu.
     """
+    # Check stock availability first
+    cache = get_static_cache()
+    item = cache.get_by_id(item_id)
+    if not item:
+        return {"state": "not_found"}
+    
+    available = item["available_count"]
+    if available < qty:
+        return {"state": "insufficient_stock", "available": available, "requested": qty}
+    
     session_id = CURRENT_SID.get()
     lines = await cart_store.get(session_id)
     cart = Cart(lines)
