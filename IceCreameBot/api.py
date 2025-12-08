@@ -32,6 +32,7 @@ from .CRUD.db import (
 from .Sync.mongo_sync import process_outbox_once, hydrate_orders_from_mongo
 
 from .tts_stt_api.piper_loader import synthesize, synthesize_to_file
+from .DB_Tools.cartTool import get_cart_with_total
 
 load_dotenv()
 
@@ -241,6 +242,16 @@ async def interact_with_agent(req: AgentRequest):
             result.update({"audio_base64": None, "audio_mime": None})
 
     return JSONResponse(result)
+    
+# ---- Cart Endpoint (Session-scoped) ----
+@app.get("/cart/{session_id}", response_class=JSONResponse)
+async def get_cart(session_id: str):
+    """Return the current cart for a given session_id with totals."""
+    try:
+        cart = await get_cart_with_total(session_id)
+        return JSONResponse({"session_id": session_id, "cart": cart})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch cart: {e}")
 # ---- Admin Sync Endpoints ----
 # Removed: automatic sync every ~5 seconds handles it; no manual triggers needed
 
