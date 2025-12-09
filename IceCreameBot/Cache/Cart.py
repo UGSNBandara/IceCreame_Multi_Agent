@@ -69,6 +69,26 @@ class Cart:
             line.price = prod["price"]  # authoritative
             line.amount = round(line.qty * line.price, 2)
 
+    def set_quantity(self, item_id: int, qty: int) -> None:
+        """Set exact quantity. If 0, remove. If missing, add."""
+        if qty <= 0:
+            self.remove(item_id)
+            return
+            
+        idx = self._index(item_id)
+        if idx != -1:
+            # Update existing
+            line = self._lines[idx]
+            line.qty = int(qty)
+            # Refresh price just in case
+            prod = self._resolve_from_catalog(item_id)
+            line.price = prod["price"]
+            line.amount = round(line.qty * line.price, 2)
+        else:
+            # Add new
+            prod = self._resolve_from_catalog(item_id)
+            self._lines.append(CartLine(code=int(item_id), name=prod["name"], qty=int(qty), price=prod["price"]))
+
     def remove(self, item_id: int) -> None:
         """Remove line if present (no error if absent)."""
         idx = self._index(item_id)

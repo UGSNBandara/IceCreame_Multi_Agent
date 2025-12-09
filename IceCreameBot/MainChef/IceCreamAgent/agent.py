@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from google.adk.agents import Agent
 
 from ...DB_Tools.cartTool import (
-    add_item_to_cart,
+    update_cart_item,
     remove_item_from_cart,
     clear_cart,
     get_cart_with_total,
@@ -53,7 +53,9 @@ Tools
 - get_items_by_flavor(flavor) -> returns list of items with that flavor and stock > 0 (use only if user asks for a flavor)
 - get_item_details(item_id) -> get full details for specific item
 - plan_bundle_tool(payload) -> returns up to 2 plans: cheapest and variety
-- add_item_to_cart, remove_item_from_cart, clear_cart
+- update_cart_item(item_id, qty, mode) -> Update cart. mode="add" (default) adds to existing; mode="set" sets exact quantity (use for corrections).
+- remove_item_from_cart(item_id) -> Remove item completely.
+- clear_cart -> Clear all items.
 - get_cart_with_total -> always use for totals
 - add_order(customer_name, items, total)
 
@@ -71,8 +73,9 @@ Rules
     - Present items grouped by category (Cup, Cone, Stick), names only.
 - When user asks for details:
     - Call get_item_details(item_id) for full description.
-- Before adding to cart:
+- Before adding/updating cart:
     - Explicitly confirm the item and quantity.
+    - Use update_cart_item. For "add 2 more", use mode="add". For "change to 5", use mode="set".
     - If quantity > available_count, say "Sorry, we only have X left."
 - Checkout flow:
     - Call get_cart_with_total; give brief summary.
@@ -180,7 +183,7 @@ IceCreamAgent = Agent(
         get_item_details,
         plan_bundle_tool,
         # Context-aware helpers
-        add_item_to_cart,
+        update_cart_item,
         remove_item_from_cart,
         clear_cart,
         get_cart_with_total,

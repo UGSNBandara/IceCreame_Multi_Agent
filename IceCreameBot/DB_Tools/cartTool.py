@@ -57,6 +57,59 @@ async def remove_item_from_cart(item_id: int) -> Dict[str, Any]:
     return {"state": "success", "cart": snapshot}
 
 
+async def update_cart_item(item_id: int, qty: int, mode: str = "add") -> Dict[str, Any]:
+    """Update item quantity in cart.
+    
+    Args:
+        item_id (int): Item ID
+        qty (int): Quantity to add or set
+        mode (str): "add" to increase existing qty, "set" to overwrite. Default "add".
+    
+    Returns:
+        dict: {"state":"success","cart":[...]} on success.
+              {"state":"insufficient_stock", "available": N} if not enough stock.
+              {"state":"not_found"} if item id not in menu.
+    """
+    # Check stock availability first
+    cache = get_static_cache()
+    item = cache.get_by_id(item_id)
+    if not item:
+        return {"state": "not_found"}
+    
+    available = item["available_count"]
+    
+    session_id = CURRENT_SID.get()
+    lines = await cart_store.get(session_id)
+    cart = Cart(lines)
+    
+    # Calculate target quantity to check stock
+    current_qty = 0
+    idx = cart._index(item_id)
+    if idx != -1:
+        current_qty = cart._lines[idx].qty
+        
+    target_qty = qty
+    if mode == "add":
+        target_qty = current_qty + qty
+        
+    if available < target_qty:
+        return {"state": "insufficient_stock", "available": available, "requested": target_qty}
+        
+    try:
+        if mode == "set":
+            cart.set_quantity(item_id, qty)
+        else:
+            cart.add(item_id, qty)
+    except CatalogNotLoaded:
+        return {"state": "catalog_not_loaded"}
+    except ItemNotFound:
+        return {"state": "not_found"}
+
+    snapshot = cart.to_lines()
+    await cart_store.put(session_id, snapshot)
+    return {"state": "success", "cart": snapshot}
+
+
 async def clear_cart() -> Dict[str, Any]:
     """Clear the session cart."""
     session_id = CURRENT_SID.get()
