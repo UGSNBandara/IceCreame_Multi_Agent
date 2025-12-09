@@ -1,42 +1,28 @@
 # Static menu catalog - coded items for fast retrieval
 from typing import List, Dict, Any
 
-# Static menu items: 2 categories (Cup, Cone) × 3 flavors (Vanilla, Chocolate, Strawberry) × 3 items each = 18 items
 STATIC_MENU: List[Dict[str, Any]] = [
-    # CUP + VANILLA
-    {"id": 1, "name": "Classic Vanilla Cup", "description": "Smooth vanilla ice cream in a cup", "price": 350.0, "category": "Cup", "flavor": "Vanilla", "available_count": 50},
-    {"id": 2, "name": "Vanilla Delight Cup", "description": "Premium vanilla with cream swirls", "price": 450.0, "category": "Cup", "flavor": "Vanilla", "available_count": 40},
-    {"id": 3, "name": "Vanilla Supreme Cup", "description": "Rich vanilla with cookie crumbs", "price": 550.0, "category": "Cup", "flavor": "Vanilla", "available_count": 30},
-    
-    # CUP + CHOCOLATE
-    {"id": 4, "name": "Chocolate Bliss Cup", "description": "Rich chocolate ice cream in a cup", "price": 400.0, "category": "Cup", "flavor": "Chocolate", "available_count": 45},
-    {"id": 5, "name": "Dark Chocolate Cup", "description": "Intense dark chocolate flavor", "price": 500.0, "category": "Cup", "flavor": "Chocolate", "available_count": 35},
-    {"id": 6, "name": "Chocolate Fudge Cup", "description": "Chocolate with fudge chunks", "price": 600.0, "category": "Cup", "flavor": "Chocolate", "available_count": 25},
-    
-    # CUP + STRAWBERRY
-    {"id": 7, "name": "Strawberry Fresh Cup", "description": "Fresh strawberry ice cream", "price": 380.0, "category": "Cup", "flavor": "Strawberry", "available_count": 40},
-    {"id": 8, "name": "Strawberry Cream Cup", "description": "Creamy strawberry delight", "price": 480.0, "category": "Cup", "flavor": "Strawberry", "available_count": 30},
-    {"id": 9, "name": "Wild Strawberry Cup", "description": "Wild strawberry with fruit bits", "price": 580.0, "category": "Cup", "flavor": "Strawberry", "available_count": 20},
-    
-    # CONE + VANILLA
-    {"id": 10, "name": "Vanilla Classic Cone", "description": "Vanilla in a crispy cone", "price": 300.0, "category": "Cone", "flavor": "Vanilla", "available_count": 60},
-    {"id": 11, "name": "Vanilla Swirl Cone", "description": "Vanilla with caramel swirl in cone", "price": 400.0, "category": "Cone", "flavor": "Vanilla", "available_count": 50},
-    {"id": 12, "name": "Vanilla Crunch Cone", "description": "Vanilla with nut topping on cone", "price": 500.0, "category": "Cone", "flavor": "Vanilla", "available_count": 40},
-    
-    # CONE + CHOCOLATE
-    {"id": 13, "name": "Chocolate Cone Classic", "description": "Chocolate ice cream in cone", "price": 350.0, "category": "Cone", "flavor": "Chocolate", "available_count": 55},
-    {"id": 14, "name": "Double Chocolate Cone", "description": "Extra chocolate in chocolate cone", "price": 450.0, "category": "Cone", "flavor": "Chocolate", "available_count": 45},
-    {"id": 15, "name": "Choco Chip Cone", "description": "Chocolate with chips in cone", "price": 550.0, "category": "Cone", "flavor": "Chocolate", "available_count": 35},
-    
-    # CONE + STRAWBERRY
-    {"id": 16, "name": "Strawberry Cone Light", "description": "Light strawberry in cone", "price": 330.0, "category": "Cone", "flavor": "Strawberry", "available_count": 50},
-    {"id": 17, "name": "Strawberry Dream Cone", "description": "Dreamy strawberry in waffle cone", "price": 430.0, "category": "Cone", "flavor": "Strawberry", "available_count": 40},
-    {"id": 18, "name": "Berry Blast Cone", "description": "Strawberry with berry mix in cone", "price": 530.0, "category": "Cone", "flavor": "Strawberry", "available_count": 30},
+    # Cones
+    {"id": 101, "name": "Pani Kaju Cone", "description": "Cashew mixed ice cream cone.", "price": 300.0, "category": "Cone", "flavor": "Cashew", "available_count": 50},
+    {"id": 102, "name": "Vanilla Cone", "description": "Classic vanilla cone.", "price": 300.0, "category": "Cone", "flavor": "Vanilla", "available_count": 50},
+    {"id": 103, "name": "Chocolate Cone", "description": "Rich chocolate cone.", "price": 300.0, "category": "Cone", "flavor": "Chocolate", "available_count": 50},
+    {"id": 104, "name": "Fruit & Nut Cone", "description": "Fruit and nut cone.", "price": 320.0, "category": "Cone", "flavor": "Fruit & Nut", "available_count": 50},
+
+    # Cups (60 ml)
+    {"id": 201, "name": "Chocolate Cup", "description": "60 ml chocolate ice cream cup.", "price": 280.0, "category": "Cup", "flavor": "Chocolate", "available_count": 60},
+    {"id": 202, "name": "Vanilla Cup", "description": "60 ml vanilla ice cream cup.", "price": 280.0, "category": "Cup", "flavor": "Vanilla", "available_count": 60},
+    {"id": 203, "name": "Fruit & Nut Cup", "description": "60 ml fruit and nut ice cream cup.", "price": 300.0, "category": "Cup", "flavor": "Fruit & Nut", "available_count": 60},
+    {"id": 204, "name": "Strawberry Cup", "description": "60 ml strawberry ice cream cup.", "price": 300.0, "category": "Cup", "flavor": "Strawberry", "available_count": 60},
+
+    # Sticks
+    {"id": 301, "name": "Faluda Stick", "description": "Faluda-flavored ice cream stick.", "price": 300.0, "category": "Stick", "flavor": "Faluda", "available_count": 40},
+    {"id": 302, "name": "Chocolate Stick", "description": "Chocolate ice cream stick.", "price": 300.0, "category": "Stick", "flavor": "Chocolate", "available_count": 40},
+    {"id": 303, "name": "Mango Stick", "description": "Mango ice cream stick.", "price": 300.0, "category": "Stick", "flavor": "Mango", "available_count": 40},
 ]
 
 # Active categories and flavors
-CATEGORIES = ["Cup", "Cone"]
-FLAVORS = ["Vanilla", "Chocolate", "Strawberry"]
+CATEGORIES = ["Cup", "Cone", "Stick"]
+FLAVORS = ["Vanilla", "Chocolate", "Strawberry", "Cashew", "Fruit & Nut", "Faluda", "Mango"]
 
 
 class StaticMenuCache:
