@@ -60,6 +60,16 @@ async def init_db() -> None:
     )
     """
   )
+  # Map one order per session
+  await conn.execute(
+    """
+    CREATE TABLE IF NOT EXISTS session_orders (
+      session_id TEXT PRIMARY KEY,
+      order_id INTEGER NOT NULL,
+      created_at TEXT NOT NULL
+    )
+    """
+  )
   # Carts table (session-scoped, JSON snapshot)
   await conn.execute(
     """
@@ -106,6 +116,33 @@ async def init_db() -> None:
     )
     """
   )
+  await conn.commit()
+
+# ---- Session→Order helpers ----
+async def sqlite_set_session_order(session_id: str, order_id: int) -> None:
+  conn = await get_db()
+  await conn.execute(
+    "REPLACE INTO session_orders(session_id, order_id, created_at) VALUES(?,?, datetime('now'))",
+    (session_id, int(order_id)),
+  )
+  await conn.commit()
+
+async def sqlite_get_session_order(session_id: str) -> int | None:
+  conn = await get_db()
+  cur = await conn.execute(
+    "SELECT order_id FROM session_orders WHERE session_id = ?",
+    (session_id,),
+  )
+  row = await cur.fetchone()
+  await cur.close()
+  if not row:
+    return None
+  # row can be dict or tuple depending on row_factory
+  return int(row["order_id"]) if isinstance(row, dict) else int(row[0])
+
+async def sqlite_clear_session_order(session_id: str) -> None:
+  conn = await get_db()
+  await conn.execute("DELETE FROM session_orders WHERE session_id = ?", (session_id,))
   await conn.commit()
 
 # ---- Cart persistence helpers ----

@@ -1,6 +1,7 @@
 # DB_Tools/orderTool.py
 from typing import List, Dict, Any
 from ..CRUD.OrderCrud import add_order as add_order_db, get_order_by_id as get_order_by_id_db
+from ..CRUD.db import sqlite_set_session_order
 from .menuTool import get_item_by_id
 from ..MainChef.context_services import (
     GlobalContextReader,
@@ -79,6 +80,13 @@ async def add_order(
             items=items,
             total=total,
         )
+        try:
+            sid = get_current_session()
+            if sid and row and row.get("id"):
+                await sqlite_set_session_order(sid, int(row["id"]))
+        except Exception:
+            # mapping is best-effort; don't fail order creation on this
+            pass
         # Fire-and-forget popularity update in background
         asyncio.create_task(_update_popularity_async(items))
         return row

@@ -28,6 +28,7 @@ from .CRUD.db import (
     outbox_mark_done,
     outbox_mark_error,
     sqlite_upsert_orders,
+    sqlite_get_session_order,
 )
 from .Sync.mongo_sync import process_outbox_once, hydrate_orders_from_mongo
 
@@ -254,6 +255,31 @@ async def get_cart(session_id: str):
         return JSONResponse({"session_id": session_id, "cart": cart})
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch cart: {e}")
+    finally:
+        CURRENT_SID.reset(token)
+
+# ---- Unified Session Summary Endpoint ----
+@app.get("/session/{session_id}/summary", response_class=JSONResponse)
+async def get_session_summary(session_id: str):
+    """Return either the active order for the session or the current cart.
+    Shapes:
+    - {"kind":"order","order":{...}}
+    - {"kind":"cart","cart":{...}}
+    - {"kind":"empty","cart":{...}}
+    """
+    from .Context.SessionContext import CURRENT_SID
+    token = CURRENT_SID.set(session_id)
+    try:
+        oid = await sqlite_get_session_order(session_id)
+        if oid is not None:
+            order = await get_order_by_id(str(oid))
+            if order:
+                return JSONResponse({"kind": "order", "order": order})
+        cart = await get_cart_with_total()
+        kind = "cart" if (cart and cart.get("cart")) else "empty"
+        return JSONResponse({"kind": kind, "cart": cart})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch session summary: {e}")
     finally:
         CURRENT_SID.reset(token)
 # ---- Admin Sync Endpoints ----
