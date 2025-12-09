@@ -60,6 +60,16 @@ async def init_db() -> None:
     )
     """
   )
+  # Carts table (session-scoped, JSON snapshot)
+  await conn.execute(
+    """
+    CREATE TABLE IF NOT EXISTS carts (
+      session_id TEXT PRIMARY KEY,
+      items TEXT NOT NULL, -- JSON array of cart lines
+      updated_at TEXT NOT NULL
+    )
+    """
+  )
   # Outbox for Mongo sync
   await conn.execute(
     """
@@ -96,6 +106,34 @@ async def init_db() -> None:
     )
     """
   )
+  await conn.commit()
+
+# ---- Cart persistence helpers ----
+async def sqlite_get_cart(session_id: str) -> list[dict]:
+  conn = await get_db()
+  cur = await conn.execute("SELECT items FROM carts WHERE session_id = ?", (session_id,))
+  row = await cur.fetchone()
+  await cur.close()
+  if not row:
+    return []
+  try:
+    return json.loads(row["items"]) if isinstance(row, dict) else json.loads(row[0])
+  except Exception:
+    return []
+
+async def sqlite_put_cart(session_id: str, items: list[dict]) -> None:
+  conn = await get_db()
+  payload = json.dumps(items, ensure_ascii=False)
+  now = datetime.now(timezone.utc).isoformat()
+  await conn.execute(
+    "REPLACE INTO carts(session_id, items, updated_at) VALUES(?, ?, ?)",
+    (session_id, payload, now),
+  )
+  await conn.commit()
+
+async def sqlite_clear_cart(session_id: str) -> None:
+  conn = await get_db()
+  await conn.execute("DELETE FROM carts WHERE session_id = ?", (session_id,))
   await conn.commit()
 
   # Removed facet tables: categories, flavors, item_category, item_flavor (using enum strings on menu instead)
