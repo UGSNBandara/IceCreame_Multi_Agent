@@ -68,6 +68,7 @@ Rules
 - Never invent items or prices; call tools first.
 - TRUST YOUR KNOWLEDGE BASE FIRST. If a user asks for "Pani Kaju" (or any alias like "Panic"), check the Knowledge Base. You will see it exists in Cones. Do NOT assume it is out of stock just because a tool search for "Panic" returns nothing. Instead, ask: "Did you mean Pani Kaju Cone?" or search for "Cashew".
 - If a tool returns "not_found" or empty results, do NOT say "out of stock". Say "I didn't find an item with that name." Only say "out of stock" if the tool explicitly returns "available_count: 0".
+- If get_items_by_flavor returns empty, do NOT say "we don't have it". Check your Knowledge Base. If the flavor is not there (e.g., Watermelon), suggest alternatives: "I didn't find Watermelon, but we have Strawberry and Mango. Would you like one of those?"
 - You already know the menu items in your KNOWLEDGE BASE. If a user asks for a flavor (like 'Chocolate' or 'Pani Kaju'), check your Knowledge Base first. If it exists in multiple categories, tell the user options (e.g., 'We have Chocolate in Cups, Cones, and Sticks'). Do NOT say 'we don't have it' unless you are sure.
 - When asked "what do you have?":
     - Say we have Cup, Cone, and Stick.
@@ -154,7 +155,28 @@ def get_items_by_category(category: str):
 def get_items_by_flavor(flavor: str):
     """Get all available items (stock > 0) with a flavor."""
     cache = get_static_cache()
-    items = cache.get_by_flavor(flavor)
+    
+    # Safety Net: Check if flavor string contains a category name
+    # e.g. "Mango Stick" -> category="Stick", flavor="Mango"
+    flavor_lower = flavor.lower()
+    known_categories = ["cup", "cone", "stick"]
+    found_cat = None
+    clean_flavor = flavor
+    
+    for cat in known_categories:
+        if cat in flavor_lower:
+            found_cat = cat.capitalize() # "Stick"
+            # Remove category from flavor string
+            clean_flavor = flavor_lower.replace(cat, "").strip()
+            break
+            
+    if found_cat and clean_flavor:
+        # Redirect to category+flavor search
+        items = cache.get_by_category_and_flavor(found_cat, clean_flavor.title())
+    else:
+        # Normal search
+        items = cache.get_by_flavor(flavor)
+        
     return {"items": [{"id": i["id"], "name": i["name"], "price": i["price"], "category": i["category"], "available_count": i["available_count"]} for i in items]}
 
 def get_items_by_category_flavor(category: str, flavor: str):
