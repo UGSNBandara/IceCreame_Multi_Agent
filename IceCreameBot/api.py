@@ -532,3 +532,55 @@ async def log_facial(session_id: str, data: FacialData):
         return JSONResponse({"status": "logged", "context_updated": bool(data.age_group or data.gender_guess)})
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to log facial data: {e}")
+
+# ---- Analytics Endpoints for Admin Panel ----
+
+@app.get("/analytics/top-categories", response_class=JSONResponse)
+async def get_top_categories(segment_key: Optional[str] = None, k: int = 3):
+    """Get top categories by popularity. If segment_key provided, filter by segment; else global."""
+    try:
+        from .MainChef.context_services import CategoryPopularityStore
+        store = CategoryPopularityStore()
+        if segment_key:
+            top = await store.get_top_categories(segment_key, k)
+        else:
+            top = await store.get_global_top_categories(k)
+        return JSONResponse({"top_categories": top})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch top categories: {e}")
+
+@app.get("/analytics/facial-logs", response_class=JSONResponse)
+async def get_facial_logs(session_id: Optional[str] = None, limit: int = 10):
+    """Get facial logs. Optionally filter by session_id. Limited to prevent overload."""
+    try:
+        from .CRUD.db import get_db
+        conn = await get_db()
+        query = "SELECT session_id, timestamp, emotion, confidence FROM facial_logs"
+        params = []
+        if session_id:
+            query += " WHERE session_id = ?"
+            params.append(session_id)
+        query += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(limit)
+        cur = await conn.execute(query, params)
+        rows = await cur.fetchall()
+        await cur.close()
+        return JSONResponse({"facial_logs": rows})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch facial logs: {e}")
+
+@app.get("/analytics/weather-logs", response_class=JSONResponse)
+async def get_weather_logs(limit: int = 10):
+    """Get recent weather logs."""
+    try:
+        from .CRUD.db import get_db
+        conn = await get_db()
+        cur = await conn.execute(
+            "SELECT timestamp, temperature_bucket, time_of_day FROM weather_logs ORDER BY timestamp DESC LIMIT ?",
+            (limit,)
+        )
+        rows = await cur.fetchall()
+        await cur.close()
+        return JSONResponse({"weather_logs": rows})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch weather logs: {e}")
