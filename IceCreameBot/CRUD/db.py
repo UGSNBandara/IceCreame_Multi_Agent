@@ -413,6 +413,27 @@ async def pop_global_top_categories(k: int = 3) -> list[dict]:
   )
   return await cur.fetchall()
 
+async def pop_all_segments_top_categories(k: int = 3) -> list[dict]:
+  conn = await get_db()
+  # Use window function to get top k per segment
+  cur = await conn.execute(
+    """
+    SELECT segment_key, category, count
+    FROM (
+        SELECT 
+            segment_key, 
+            category, 
+            count,
+            ROW_NUMBER() OVER (PARTITION BY segment_key ORDER BY count DESC) as rn
+        FROM category_popularity
+    )
+    WHERE rn <= ?
+    ORDER BY segment_key, rn
+    """,
+    (int(k),),
+  )
+  return await cur.fetchall()
+
 # ---- Weather & Facial Logs ----
 async def log_weather(timestamp: str, temperature_bucket: str, time_of_day: str) -> None:
   conn = await get_db()

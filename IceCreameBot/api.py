@@ -537,15 +537,26 @@ async def log_facial(session_id: str, data: FacialData):
 
 @app.get("/analytics/top-categories", response_class=JSONResponse)
 async def get_top_categories(segment_key: Optional[str] = None, k: int = 3):
-    """Get top categories by popularity. If segment_key provided, filter by segment; else global."""
+    """Get top categories. Returns global top categories and optionally segment-specific ones."""
     try:
         from .MainChef.context_services import CategoryPopularityStore
         store = CategoryPopularityStore()
+        
+        # Always fetch global top categories
+        global_top = await store.get_global_top_categories(k)
+        
+        response_data = {"global_top_categories": global_top}
+
         if segment_key:
-            top = await store.get_top_categories(segment_key, k)
+            # If specific segment requested, return just that one
+            segment_top = await store.get_top_categories(segment_key, k)
+            response_data["segments"] = {segment_key: segment_top}
         else:
-            top = await store.get_global_top_categories(k)
-        return JSONResponse({"top_categories": top})
+            # Otherwise return all segments
+            all_segments = await store.get_all_segments_top_categories(k)
+            response_data["segments"] = all_segments
+            
+        return JSONResponse(response_data)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch top categories: {e}")
 

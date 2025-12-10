@@ -137,6 +137,18 @@ class CategoryPopularityStore:
         rows = await db.pop_global_top_categories(k)
         return [r["category"] if isinstance(r, dict) else r[0] for r in rows]
 
+    async def get_all_segments_top_categories(self, k: int = 3) -> Dict[str, List[str]]:
+        rows = await db.pop_all_segments_top_categories(k)
+        result = {}
+        for r in rows:
+            # Handle row factory (dict or tuple)
+            seg = r["segment_key"] if isinstance(r, dict) else r[0]
+            cat = r["category"] if isinstance(r, dict) else r[1]
+            if seg not in result:
+                result[seg] = []
+            result[seg].append(cat)
+        return result
+
 
 class AnalyticsSink:
     """Asynchronous sink for manager analytics events.
