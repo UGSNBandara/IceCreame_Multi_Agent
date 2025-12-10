@@ -57,13 +57,13 @@ async def remove_item_from_cart(item_id: int) -> Dict[str, Any]:
     return {"state": "success", "cart": snapshot}
 
 
-async def update_cart_item(item_id: int, qty: int, mode: str = "add") -> Dict[str, Any]:
+async def update_cart_item(item_id: int, qty: int, mode: str) -> Dict[str, Any]:
     """Update item quantity in cart.
     
     Args:
         item_id (int): Item ID
         qty (int): Quantity to add or set
-        mode (str): "add" to increase existing qty, "set" to overwrite. Default "add".
+        mode (str): "add" to increase existing qty, "set" to overwrite. REQUIRED.
     
     Returns:
         dict: {"state":"success","cart":[...]} on success.

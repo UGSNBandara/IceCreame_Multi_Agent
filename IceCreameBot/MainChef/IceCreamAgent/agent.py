@@ -58,7 +58,7 @@ Tools
 - get_items_by_flavor(flavor) -> returns list of items with that flavor and stock > 0 (use only if user asks for a flavor)
 - get_item_details(item_id) -> get full details for specific item
 - plan_bundle_tool(payload) -> returns up to 2 plans: cheapest and variety
-- update_cart_item(item_id, qty, mode) -> Update cart. mode="add" (default) adds to existing; mode="set" sets exact quantity (use for corrections).
+- update_cart_item(item_id, qty, mode) -> Update cart. mode is REQUIRED. Use mode="add" to add to existing; mode="set" to set exact quantity.
 - remove_item_from_cart(item_id) -> Remove item completely.
 - clear_cart -> Clear all items.
 - get_cart_with_total -> always use for totals
