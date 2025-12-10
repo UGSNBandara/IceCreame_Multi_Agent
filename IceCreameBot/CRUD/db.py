@@ -116,6 +116,29 @@ async def init_db() -> None:
     )
     """
   )
+  # Weather logs
+  await conn.execute(
+    """
+    CREATE TABLE IF NOT EXISTS weather_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp TEXT NOT NULL,
+      temperature_bucket TEXT NOT NULL,
+      time_of_day TEXT NOT NULL
+    )
+    """
+  )
+  # Facial expression logs
+  await conn.execute(
+    """
+    CREATE TABLE IF NOT EXISTS facial_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL,
+      timestamp TEXT NOT NULL,
+      emotion TEXT NOT NULL,
+      confidence REAL NOT NULL
+    )
+    """
+  )
   await conn.commit()
 
 # ---- Session→Order helpers ----
@@ -389,3 +412,20 @@ async def pop_global_top_categories(k: int = 3) -> list[dict]:
     (int(k),),
   )
   return await cur.fetchall()
+
+# ---- Weather & Facial Logs ----
+async def log_weather(timestamp: str, temperature_bucket: str, time_of_day: str) -> None:
+  conn = await get_db()
+  await conn.execute(
+    "INSERT INTO weather_logs(timestamp, temperature_bucket, time_of_day) VALUES (?,?,?)",
+    (timestamp, temperature_bucket, time_of_day),
+  )
+  await conn.commit()
+
+async def log_facial_expression(session_id: str, timestamp: str, emotion: str, confidence: float) -> None:
+  conn = await get_db()
+  await conn.execute(
+    "INSERT INTO facial_logs(session_id, timestamp, emotion, confidence) VALUES (?,?,?,?)",
+    (session_id, timestamp, emotion, float(confidence)),
+  )
+  await conn.commit()

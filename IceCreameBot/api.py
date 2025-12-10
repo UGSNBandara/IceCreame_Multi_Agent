@@ -3,6 +3,7 @@ print("=== IMPORTING IceCreameBot.api (sentinel) ===")
 import asyncio
 import time
 import os
+from enum import Enum
 from typing import Optional, Dict, Any
 
 from fastapi import FastAPI, HTTPException
@@ -29,7 +30,10 @@ from .CRUD.db import (
     outbox_mark_error,
     sqlite_upsert_orders,
     sqlite_get_session_order,
+    log_facial_expression,
+    log_weather,
 )
+from .MainChef.context_services import GlobalContextReader
 from .Sync.mongo_sync import process_outbox_once, hydrate_orders_from_mongo
 
 from .tts_stt_api.piper_loader import synthesize, synthesize_to_file
@@ -63,7 +67,7 @@ SESSION_TTL_SEC = int(os.getenv("SESSION_TTL_SEC", "900"))           # 15 minute
 SESSION_IDLE_RESET_SEC = int(os.getenv("SESSION_IDLE_RESET_SEC", "31536000"))  # ~1 year (effectively disabled)
 
 # per-user map -> {"session_id": str, "created_at": float, "last_seen": float}
-user_sessions: Dict[str, Dict[str, Any]] = {}
+user_sessions = _session_store.user_sessions
 _user_sessions_lock = asyncio.Lock()
 
 # ---- Initial state ----
@@ -84,8 +88,8 @@ class AgentRequest(BaseModel):
     session_id: Optional[str] = None
     speak: bool = False  # <-- only toggle
     voice: str = "en-US-JennyNeural"  # <-- voice selection
-    age_group: Optional[str] = None
-    gender_guess: Optional[str] = None
+    age_group: Optional[AgeGroup] = None
+    gender_guess: Optional[GenderGroup] = None
 
 class AgentResponse(BaseModel):
     response: str
@@ -112,6 +116,18 @@ class OrderStatusUpdate(BaseModel):
 async def _startup():
     print("=== STARTUP BEGIN ===")
     await init_db()
+    
+    # Log initial weather
+    try:
+        from datetime import datetime, timezone
+        reader = GlobalContextReader()
+        # Force a refresh
+        reader._refresh_weather_safely()
+        timestamp = datetime.now(timezone.utc).isoformat()
+        await log_weather(timestamp, reader.temperature_bucket(), reader.time_of_day())
+        print(f"=== STARTUP: Logged weather {reader.temperature_bucket()} / {reader.time_of_day()} ===")
+    except Exception as e:
+        print(f"=== STARTUP: Weather log failed: {e} ===")
     
     # Static menu is hardcoded, no need to hydrate from Mongo
     print("Static menu: 18 items (Cup/Cone × Vanilla/Chocolate/Strawberry)")
@@ -218,9 +234,9 @@ async def interact_with_agent(req: AgentRequest):
         ctx = _session_store.user_sessions.get(sid) or {}
         # Only override if provided; keep previous values otherwise
         if req.age_group is not None:
-            ctx["age_group"] = req.age_group
+            ctx["age_group"] = req.age_group.value
         if req.gender_guess is not None:
-            ctx["gender_guess"] = req.gender_guess
+            ctx["gender_guess"] = req.gender_guess.value
         # mood can be added later similarly
         _session_store.user_sessions[sid] = ctx
     except Exception:
@@ -471,3 +487,47 @@ async def get_order(order_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch order: {e}")
+
+class AgeGroup(str, Enum):
+    CHILD = "child"
+    TEEN = "teen"
+    ADULT = "adult"
+    SENIOR = "senior"
+
+class GenderGroup(str, Enum):
+    MALE = "male"
+    FEMALE = "female"
+
+class FacialData(BaseModel):
+    emotion: str
+    confidence: float
+    age_group: Optional[AgeGroup] = None
+    gender_guess: Optional[GenderGroup] = None
+
+@app.post("/session/{session_id}/facial", response_class=JSONResponse)
+async def log_facial(session_id: str, data: FacialData):
+    """Log facial expression data for a session and update session context."""
+    try:
+        from datetime import datetime, timezone
+        timestamp = datetime.now(timezone.utc).isoformat()
+        
+        # 1. Log facial data to DB
+        await log_facial_expression(session_id, timestamp, data.emotion, data.confidence)
+        
+        # 2. Update session context (in-memory) with age/gender if provided
+        if data.age_group or data.gender_guess:
+            async with _user_sessions_lock:
+                session_data = user_sessions.get(session_id, {})
+                if data.age_group:
+                    session_data["age_group"] = data.age_group.value
+                if data.gender_guess:
+                    session_data["gender_guess"] = data.gender_guess.value
+                # Ensure session exists in map
+                if session_id not in user_sessions:
+                    session_data["created_at"] = time.time()
+                session_data["last_seen"] = time.time()
+                user_sessions[session_id] = session_data
+                
+        return JSONResponse({"status": "logged", "context_updated": bool(data.age_group or data.gender_guess)})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to log facial data: {e}")
