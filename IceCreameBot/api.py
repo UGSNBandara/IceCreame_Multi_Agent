@@ -22,6 +22,7 @@ from . import session_store as _session_store
 from .utils_for_api import call_agent_async
 
 from .DB_Tools.menustateTool import get_menu_state
+from .DB_Tools.catalogTool import catalog_facets
 from .CRUD.OrderCrud import list_orders, update_order_status, OrderStatus, get_order_by_id
 from .CRUD.db import (
     init_db,
@@ -81,6 +82,16 @@ INITIAL_STATE = {
 }
 
 # ---- Models ----
+class AgeGroup(str, Enum):
+    CHILD = "child"
+    TEEN = "teen"
+    ADULT = "adult"
+    SENIOR = "senior"
+
+class GenderGroup(str, Enum):
+    MALE = "male"
+    FEMALE = "female"
+
 class AgentRequest(BaseModel):
     user_id: str = Field(..., min_length=1)
     text: str = Field(..., min_length=1)
@@ -487,16 +498,6 @@ async def get_order(order_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch order: {e}")
-
-class AgeGroup(str, Enum):
-    CHILD = "child"
-    TEEN = "teen"
-    ADULT = "adult"
-    SENIOR = "senior"
-
-class GenderGroup(str, Enum):
-    MALE = "male"
-    FEMALE = "female"
 
 class FacialData(BaseModel):
     emotion: str
