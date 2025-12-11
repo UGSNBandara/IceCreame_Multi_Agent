@@ -99,6 +99,11 @@ Rules
     - Ask for name; default "Guest".
     - On yes, call add_order and return order_id.
 
+Constraints
+- NEVER output code blocks, JSON, or technical debug info to the user.
+- Only speak in natural language.
+- Do not repeat the tool output verbatim; summarize it naturally.
+
 Errors
 - Never invent items; only suggest what tools return.
 """
