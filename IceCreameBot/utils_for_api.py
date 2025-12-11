@@ -2,6 +2,7 @@ from datetime import datetime
 from google.genai import types
 from typing import Callable, Dict, Any
 from .Context.SessionContext import CURRENT_SID
+from . import session_store as _session_store
 
 
 
@@ -43,7 +44,24 @@ async def call_agent_async(runner, user_id, session_id, query):
     """Call the agent asynchronously with the user's query.
     Prefer final response text; if empty, trigger a safe finalization turn."""
 
-    content = types.Content(role="user", parts=[types.Part(text=query)])
+    # Inject session context (Age/Gender) into the prompt for personalization
+    # This is invisible to the user but visible to the agent
+    ctx_str = ""
+    try:
+        sess = _session_store.user_sessions.get(session_id, {})
+        age = sess.get("age_group")
+        gender = sess.get("gender_guess")
+        if age or gender:
+            ctx_parts = []
+            if age: ctx_parts.append(f"AgeGroup={age}")
+            if gender: ctx_parts.append(f"Gender={gender}")
+            ctx_str = f"[Context: {', '.join(ctx_parts)}] "
+    except Exception:
+        pass
+
+    # Prepend context to the user's query
+    full_text = ctx_str + query
+    content = types.Content(role="user", parts=[types.Part(text=full_text)])
 
     token = CURRENT_SID.set(session_id)
 
