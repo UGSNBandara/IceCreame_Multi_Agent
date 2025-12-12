@@ -121,6 +121,45 @@ class MenuUpdateRequest(BaseModel):
 
 class OrderStatusUpdate(BaseModel):
     status: OrderStatus
+
+class OrderCancelRequest(BaseModel):
+    session_id: Optional[str] = None
+    order_id: Optional[str] = None
+
+@app.post("/orders/cancel", response_class=JSONResponse)
+async def cancel_order(payload: OrderCancelRequest):
+    """Cancel an order by order_id or session_id."""
+    oid = payload.order_id
+    
+    if not oid and payload.session_id:
+        # Try to find order for session
+        found_oid = await sqlite_get_session_order(payload.session_id)
+        if found_oid:
+            oid = str(found_oid)
+            
+    if not oid:
+        raise HTTPException(status_code=400, detail="Must provide order_id or valid session_id with active order")
+        
+    try:
+        # Use the shared update logic
+        updated = await update_order_status(oid, OrderStatus.CANCELED.value)
+        state = updated.get("state")
+        
+        if state == "invalid_status":
+            raise HTTPException(status_code=400, detail="Invalid status")
+        if state == "invalid_id":
+            raise HTTPException(status_code=400, detail="Invalid order id")
+        if state == "not_found":
+            raise HTTPException(status_code=404, detail="Order not found")
+            
+        # Note: Stock is only deducted on 'done', so canceling 'pending' needs no stock action.
+        # If canceling 'done', we technically should restock, but keeping it simple/safe for now.
+        
+        return JSONResponse(updated)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to cancel order: {e}")
     
 # ---- Lifespan: init DB and sync orders only ----
 @app.on_event("startup")
@@ -553,44 +592,95 @@ async def log_facial(session_id: str, data: FacialData):
 
 # ---- Analytics Endpoints for Admin Panel ----
 
-@app.get("/analytics/top-categories", response_class=JSONResponse)
-async def get_top_categories(segment_key: Optional[str] = None, k: int = 3):
-    """Get top categories. Returns global top categories and optionally segment-specific ones."""
-    try:
-        from .MainChef.context_services import CategoryPopularityStore
-        store = CategoryPopularityStore()
-        
-        # Always fetch global top categories
-        global_top = await store.get_global_top_categories(k)
-        
-        response_data = {"global_top_categories": global_top}
-
-        if segment_key:
-            # If specific segment requested, return just that one
-            segment_top = await store.get_top_categories(segment_key, k)
-            response_data["segments"] = {segment_key: segment_top}
-        else:
-            # Otherwise return all segments
-            all_segments = await store.get_all_segments_top_categories(k)
-            response_data["segments"] = all_segments
-            
-        return JSONResponse(response_data)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch top categories: {e}")
-
-@app.get("/analytics/facial-logs", response_class=JSONResponse)
-async def get_facial_logs(session_id: Optional[str] = None, limit: int = 10):
-    """Get session facial analytics. Optionally filter by session_id."""
+@app.get("/analytics/dashboard-stats", response_class=JSONResponse)
+async def get_dashboard_stats(days: int = 7):
+    """
+    Get aggregated stats for dashboard charts.
+    
+    Frontend Implementation Guide:
+    1. Demographics (Pie Charts): Use 'age_distribution' and 'gender_distribution'.
+    2. Emotion Frequency (Bar Charts): Use 'emotion_frequency'.
+    3. Trends (Line Charts): Use 'daily_sessions' (x=day, y=count).
+    4. Correlations (Heatmap/Grouped Bar): Use 'emotion_by_weather' (rows=weather, cols=emotion).
+    """
     try:
         from .CRUD.db import get_db
         conn = await get_db()
-        query = "SELECT session_id, age_group, gender, weather_temp, weather_tod, dominant_emotion, emotion_counts, updated_at FROM session_analytics"
+        
+        stats = {}
+
+        # 1. Demographics
+        cur = await conn.execute("SELECT age_group, COUNT(*) as count FROM session_analytics WHERE age_group IS NOT NULL GROUP BY age_group")
+        stats["age_distribution"] = {row["age_group"]: row["count"] for row in await cur.fetchall()}
+        
+        cur = await conn.execute("SELECT gender, COUNT(*) as count FROM session_analytics WHERE gender IS NOT NULL GROUP BY gender")
+        stats["gender_distribution"] = {row["gender"]: row["count"] for row in await cur.fetchall()}
+
+        # 2. Emotion Frequency
+        cur = await conn.execute("SELECT dominant_emotion, COUNT(*) as count FROM session_analytics WHERE dominant_emotion IS NOT NULL GROUP BY dominant_emotion")
+        stats["emotion_frequency"] = {row["dominant_emotion"]: row["count"] for row in await cur.fetchall()}
+
+        # 3. Trends (Daily Sessions)
+        cur = await conn.execute(
+            f"SELECT date(updated_at) as day, COUNT(*) as count FROM session_analytics GROUP BY day ORDER BY day DESC LIMIT {days}"
+        )
+        stats["daily_sessions"] = (await cur.fetchall())[::-1] # Chronological order
+        
+        # 4. Emotion vs Weather
+        cur = await conn.execute(
+            "SELECT weather_temp, dominant_emotion, COUNT(*) as count FROM session_analytics WHERE dominant_emotion IS NOT NULL AND weather_temp IS NOT NULL GROUP BY weather_temp, dominant_emotion"
+        )
+        weather_stats = {}
+        for row in await cur.fetchall():
+            w = row["weather_temp"]
+            e = row["dominant_emotion"]
+            c = row["count"]
+            if w not in weather_stats: weather_stats[w] = {}
+            weather_stats[w][e] = c
+        stats["emotion_by_weather"] = weather_stats
+
+        await cur.close()
+        return JSONResponse(stats)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch dashboard stats: {e}")
+
+@app.get("/analytics/facial-logs", response_class=JSONResponse)
+async def get_facial_logs(
+    session_id: Optional[str] = None, 
+    age_group: Optional[str] = None,
+    gender: Optional[str] = None,
+    dominant_emotion: Optional[str] = None,
+    limit: int = 50
+):
+    """
+    Get raw session facial analytics for Tables/Grids. 
+    
+    Frontend Implementation Guide:
+    - Use for 'Tables: Raw/aggregated data with sorting'.
+    - Support filtering by passing query params (e.g., ?dominant_emotion=happy).
+    """
+    try:
+        from .CRUD.db import get_db
+        conn = await get_db()
+        query = "SELECT session_id, age_group, gender, weather_temp, weather_tod, dominant_emotion, emotion_counts, updated_at FROM session_analytics WHERE 1=1"
         params = []
+        
         if session_id:
-            query += " WHERE session_id = ?"
+            query += " AND session_id = ?"
             params.append(session_id)
+        if age_group:
+            query += " AND age_group = ?"
+            params.append(age_group)
+        if gender:
+            query += " AND gender = ?"
+            params.append(gender)
+        if dominant_emotion:
+            query += " AND dominant_emotion = ?"
+            params.append(dominant_emotion)
+            
         query += " ORDER BY updated_at DESC LIMIT ?"
         params.append(limit)
+        
         cur = await conn.execute(query, params)
         rows = await cur.fetchall()
         await cur.close()

@@ -19,6 +19,7 @@ def _stringify_id(doc: Dict[str, Any]) -> Dict[str, Any]:
 class OrderStatus(str, Enum):
     PENDING = "pending"
     DONE = "done"
+    CANCELED = "canceled"
 
 async def add_order(
     customer_name: str,
