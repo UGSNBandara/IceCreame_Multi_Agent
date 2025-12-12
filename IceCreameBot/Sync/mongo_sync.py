@@ -67,6 +67,8 @@ async def process_outbox_once(fetch_outbox, mark_done, mark_error):
                 await _sync_menu_event(db, op, payload)
             elif entity == "order":
                 await _sync_order_event(db, op, payload)
+            elif entity == "analytics":
+                await _sync_analytics_event(db, op, payload)
             elif entity == "category":
                 await _sync_category_event(db, op, payload)
             elif entity == "flavor":
@@ -102,6 +104,16 @@ async def _sync_order_event(db, op: str, payload: Dict[str, Any]):
             lambda: col.update_one({"id": doc["id"]}, {"$set": doc}, upsert=True)
         )
     # Orders usually not deleted; skip delete branch
+
+async def _sync_analytics_event(db, op: str, payload: Dict[str, Any]):
+    col = db["session_analytics"]
+    if op in ("insert", "update", "session_update"):
+        doc = dict(payload)
+        doc["updated_at"] = _utc_now_iso()
+        await asyncio.to_thread(
+            lambda: col.update_one({"session_id": doc["session_id"]}, {"$set": doc}, upsert=True)
+        )
+    # Analytics usually not deleted; skip delete branch
 
 async def _sync_category_event(db, op: str, payload: Dict[str, Any]):
     col = db["categories"]

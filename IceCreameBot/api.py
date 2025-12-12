@@ -203,6 +203,23 @@ async def _startup():
                 print(f"Outbox worker error: {e}")
             await asyncio.sleep(5)
     asyncio.create_task(_worker())
+
+    # Start background weather logger (every 10 mins)
+    async def _weather_worker():
+        while True:
+            try:
+                from datetime import datetime, timezone
+                reader = GlobalContextReader()
+                # Force refresh if needed (handled internally by reader, but we log current state)
+                reader._refresh_weather_safely()
+                timestamp = datetime.now(timezone.utc).isoformat()
+                await log_weather(timestamp, reader.temperature_bucket(), reader.time_of_day())
+                # print(f"=== WEATHER LOGGED: {reader.temperature_bucket()} / {reader.time_of_day()} ===")
+            except Exception as e:
+                print(f"Weather worker error: {e}")
+            await asyncio.sleep(600) # 10 minutes
+    asyncio.create_task(_weather_worker())
+
     print("=== STARTUP COMPLETE ===")
 
 @app.get("/health")
