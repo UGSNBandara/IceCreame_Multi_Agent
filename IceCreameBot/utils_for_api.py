@@ -40,21 +40,34 @@ async def process_agent_response(event):
     return {"final": final_response, "latest": latest_text}
 
 
+from .MainChef.context_services import GlobalContextReader
+
 async def call_agent_async(runner, user_id, session_id, query):
     """Call the agent asynchronously with the user's query.
     Prefer final response text; if empty, trigger a safe finalization turn."""
 
-    # Inject session context (Age/Gender) into the prompt for personalization
+    # Inject session context (Age/Gender/Emotion/Weather) into the prompt for personalization
     # This is invisible to the user but visible to the agent
     ctx_str = ""
     try:
         sess = _session_store.user_sessions.get(session_id, {})
         age = sess.get("age_group")
         gender = sess.get("gender_guess")
-        if age or gender:
-            ctx_parts = []
-            if age: ctx_parts.append(f"AgeGroup={age}")
-            if gender: ctx_parts.append(f"Gender={gender}")
+        emotion = sess.get("emotion")
+        
+        # Get global weather context
+        global_reader = GlobalContextReader()
+        temp = global_reader.temperature_bucket()
+        tod = global_reader.time_of_day()
+
+        ctx_parts = []
+        if age: ctx_parts.append(f"AgeGroup={age}")
+        if gender: ctx_parts.append(f"Gender={gender}")
+        if emotion: ctx_parts.append(f"Emotion={emotion}")
+        if temp: ctx_parts.append(f"WeatherTemp={temp}")
+        if tod: ctx_parts.append(f"TimeOfDay={tod}")
+        
+        if ctx_parts:
             ctx_str = f"[Context: {', '.join(ctx_parts)}] "
     except Exception:
         pass

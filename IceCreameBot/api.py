@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from google.adk.sessions import InMemorySessionService
 from google.adk.runners import Runner
 
-from .MainChef.IceCreamAgent.agent import IceCreamAgent
+from .MainChef.IceCreamAgent.agent import IceCreamAgent, _global_reader
 from .MainChef.context_services import set_current_session
 from .MainChef.static_menu import get_static_cache
 from . import session_store as _session_store
@@ -31,7 +31,7 @@ from .CRUD.db import (
     outbox_mark_error,
     sqlite_upsert_orders,
     sqlite_get_session_order,
-    log_facial_expression,
+    upsert_session_analytics,
     log_weather,
 )
 from .MainChef.context_services import GlobalContextReader
@@ -499,9 +499,17 @@ async def get_order(order_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch order: {e}")
 
+class Emotion(str, Enum):
+    HAPPY = "happy"
+    SAD = "sad"
+    ANGRY = "angry"
+    NEUTRAL = "neutral"
+    SURPRISED = "surprised"
+    FEARFUL = "fearful"
+    DISGUSTED = "disgusted"
+
 class FacialData(BaseModel):
-    emotion: str
-    confidence: float
+    emotion: Emotion
     age_group: Optional[AgeGroup] = None
     gender_guess: Optional[GenderGroup] = None
 
@@ -509,25 +517,35 @@ class FacialData(BaseModel):
 async def log_facial(session_id: str, data: FacialData):
     """Log facial expression data for a session and update session context."""
     try:
-        from datetime import datetime, timezone
-        timestamp = datetime.now(timezone.utc).isoformat()
-        
-        # 1. Log facial data to DB
-        await log_facial_expression(session_id, timestamp, data.emotion, data.confidence)
-        
-        # 2. Update session context (in-memory) with age/gender if provided
-        if data.age_group or data.gender_guess:
+        # 1. Update session context (in-memory) with age/gender/emotion if provided
+        if data.age_group or data.gender_guess or data.emotion:
             async with _user_sessions_lock:
                 session_data = user_sessions.get(session_id, {})
                 if data.age_group:
                     session_data["age_group"] = data.age_group.value
                 if data.gender_guess:
                     session_data["gender_guess"] = data.gender_guess.value
+                if data.emotion:
+                    session_data["emotion"] = data.emotion.value
                 # Ensure session exists in map
                 if session_id not in user_sessions:
                     session_data["created_at"] = time.time()
                 session_data["last_seen"] = time.time()
                 user_sessions[session_id] = session_data
+        
+        # 2. Log to Session Analytics (DB)
+        # Get current weather context
+        temp = _global_reader.temperature_bucket()
+        tod = _global_reader.time_of_day()
+        
+        await upsert_session_analytics(
+            session_id=session_id,
+            age_group=data.age_group.value if data.age_group else None,
+            gender=data.gender_guess.value if data.gender_guess else None,
+            weather_temp=temp,
+            weather_tod=tod,
+            new_emotion=data.emotion.value
+        )
                 
         return JSONResponse({"status": "logged", "context_updated": bool(data.age_group or data.gender_guess)})
     except Exception as e:
@@ -562,16 +580,16 @@ async def get_top_categories(segment_key: Optional[str] = None, k: int = 3):
 
 @app.get("/analytics/facial-logs", response_class=JSONResponse)
 async def get_facial_logs(session_id: Optional[str] = None, limit: int = 10):
-    """Get facial logs. Optionally filter by session_id. Limited to prevent overload."""
+    """Get session facial analytics. Optionally filter by session_id."""
     try:
         from .CRUD.db import get_db
         conn = await get_db()
-        query = "SELECT session_id, timestamp, emotion, confidence FROM facial_logs"
+        query = "SELECT session_id, age_group, gender, weather_temp, weather_tod, dominant_emotion, emotion_counts, updated_at FROM session_analytics"
         params = []
         if session_id:
             query += " WHERE session_id = ?"
             params.append(session_id)
-        query += " ORDER BY timestamp DESC LIMIT ?"
+        query += " ORDER BY updated_at DESC LIMIT ?"
         params.append(limit)
         cur = await conn.execute(query, params)
         rows = await cur.fetchall()

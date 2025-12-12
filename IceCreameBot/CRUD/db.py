@@ -127,15 +127,18 @@ async def init_db() -> None:
     )
     """
   )
-  # Facial expression logs
+  # Session Analytics (Summary per session)
   await conn.execute(
     """
-    CREATE TABLE IF NOT EXISTS facial_logs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_id TEXT NOT NULL,
-      timestamp TEXT NOT NULL,
-      emotion TEXT NOT NULL,
-      confidence REAL NOT NULL
+    CREATE TABLE IF NOT EXISTS session_analytics (
+      session_id TEXT PRIMARY KEY,
+      age_group TEXT,
+      gender TEXT,
+      weather_temp TEXT,
+      weather_tod TEXT,
+      emotion_counts TEXT DEFAULT '{}',
+      dominant_emotion TEXT,
+      updated_at TEXT
     )
     """
   )
@@ -443,10 +446,67 @@ async def log_weather(timestamp: str, temperature_bucket: str, time_of_day: str)
   )
   await conn.commit()
 
-async def log_facial_expression(session_id: str, timestamp: str, emotion: str, confidence: float) -> None:
+async def upsert_session_analytics(
+    session_id: str, 
+    age_group: str | None, 
+    gender: str | None, 
+    weather_temp: str, 
+    weather_tod: str, 
+    new_emotion: str
+) -> None:
+  """Update session analytics with new facial detection data."""
   conn = await get_db()
+  timestamp = datetime.now(timezone.utc).isoformat()
+  
+  # Get existing row
+  cur = await conn.execute("SELECT emotion_counts FROM session_analytics WHERE session_id = ?", (session_id,))
+  row = await cur.fetchone()
+  
+  counts = {}
+  if row:
+    try:
+      counts = json.loads(row["emotion_counts"] if isinstance(row, dict) else row[0])
+    except Exception:
+      counts = {}
+  
+  # Increment new emotion
+  if new_emotion:
+    counts[new_emotion] = counts.get(new_emotion, 0) + 1
+  
+  # Determine dominant emotion
+  dominant = max(counts, key=counts.get) if counts else None
+  
+  # Upsert
   await conn.execute(
-    "INSERT INTO facial_logs(session_id, timestamp, emotion, confidence) VALUES (?,?,?,?)",
-    (session_id, timestamp, emotion, float(confidence)),
+    """
+    INSERT INTO session_analytics(session_id, age_group, gender, weather_temp, weather_tod, emotion_counts, dominant_emotion, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(session_id) DO UPDATE SET
+      age_group = excluded.age_group,
+      gender = excluded.gender,
+      weather_temp = excluded.weather_temp,
+      weather_tod = excluded.weather_tod,
+      emotion_counts = excluded.emotion_counts,
+      dominant_emotion = excluded.dominant_emotion,
+      updated_at = excluded.updated_at
+    """,
+    (session_id, age_group, gender, weather_temp, weather_tod, json.dumps(counts), dominant, timestamp)
   )
+  
+  # Sync to Mongo via Outbox
+  await outbox_enqueue(
+      "analytics",
+      "session_update",
+      {
+          "session_id": session_id,
+          "age_group": age_group,
+          "gender": gender,
+          "weather_temp": weather_temp,
+          "weather_tod": weather_tod,
+          "dominant_emotion": dominant,
+          "emotion_counts": counts,
+          "updated_at": timestamp
+      }
+  )
+  
   await conn.commit()
