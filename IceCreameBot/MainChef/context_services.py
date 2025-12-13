@@ -44,10 +44,15 @@ class GlobalContextReader:
         self._longitude: Optional[str] = os.getenv("WEATHER_LON")
 
     def time_of_day(self) -> str:
-        hour = time.localtime().tm_hour
-        if 5 <= hour < 12:
+        # Use UTC to match the logging timestamp
+        t = time.gmtime()
+        minutes = t.tm_hour * 60 + t.tm_min
+        
+        # Morning: 05:00 to 11:30
+        if 300 <= minutes < 690:
             return "morning"
-        if 12 <= hour < 18:
+        # Afternoon: 11:30 to 15:30 (3:30 PM)
+        if 690 <= minutes < 930:
             return "afternoon"
         return "evening"
 
