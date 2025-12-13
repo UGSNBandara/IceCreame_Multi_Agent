@@ -47,7 +47,7 @@ from .MainChef.context_services import GlobalContextReader
 
 async def call_agent_async(runner, user_id, session_id, query):
     """Call the agent asynchronously with the user's query.
-    Prefer final response text; if empty, trigger a safe finalization turn."""
+    Accumulate all text responses from the agent to ensure multi-step answers are captured."""
 
     # Inject session context (Age/Gender/Emotion/Weather) into the prompt for personalization
     # This is invisible to the user but visible to the agent
@@ -81,22 +81,29 @@ async def call_agent_async(runner, user_id, session_id, query):
 
     token = CURRENT_SID.set(session_id)
 
-    final_response_text = None
+    collected_texts = []
     try:
         async for event in runner.run_async(
             user_id=user_id, session_id=session_id, new_message=content
         ):
             resp = await process_agent_response(event)
+            
+            text_chunk = None
             if isinstance(resp, dict):
-                if resp.get("final"):
-                    final_response_text = resp["final"]
+                text_chunk = resp.get("latest")
             else:
-                if resp:
-                    final_response_text = resp
+                text_chunk = resp
+            
+            if text_chunk:
+                collected_texts.append(text_chunk)
+                
     except Exception as e:
         print(f"ERROR during agent run: {e}")
     finally:
         CURRENT_SID.reset(token)
+
+    # Join all collected text parts
+    final_response_text = " ".join(collected_texts).strip()
 
     # If final response is empty, trigger a short finalization prompt
     if not final_response_text:
