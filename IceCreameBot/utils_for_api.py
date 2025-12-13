@@ -21,6 +21,7 @@ async def process_agent_response(event):
     latest_text = None
     if event.content and getattr(event.content, "parts", None):
         for part in event.content.parts:
+            # Only process text parts, skip any bytes/blobs
             if hasattr(part, "text") and part.text:
                 txt = part.text.strip()
                 if txt:
@@ -30,9 +31,11 @@ async def process_agent_response(event):
     final_response = None
     if event.is_final_response():
         if event.content and getattr(event.content, "parts", None):
-            first = event.content.parts[0]
-            if hasattr(first, "text") and first.text:
-                final_response = first.text.strip()
+            # Find the first text part
+            for part in event.content.parts:
+                if hasattr(part, "text") and part.text:
+                    final_response = part.text.strip()
+                    break
         if final_response is None:
             print("\n Final Agent Response: [No text content in final event]\n")
 
