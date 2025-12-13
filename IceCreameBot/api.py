@@ -559,6 +559,10 @@ async def update_order_status_endpoint(order_id: str, payload: OrderStatusUpdate
                     cache.decrease_stock(int(item_id), qty)
         
         return JSONResponse(updated)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update order status: {e}")
 
 @app.post("/send-order-sms")
 async def send_order_sms(data: SmsRequest):
@@ -604,10 +608,6 @@ async def send_order_sms(data: SmsRequest):
             raise HTTPException(status_code=500, detail=f"SMS failed: {result}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update order status: {e}")
 
 @app.get("/orders/{order_id}", response_class=JSONResponse)
 async def get_order(order_id: str):
