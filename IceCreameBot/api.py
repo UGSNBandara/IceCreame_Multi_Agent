@@ -3,6 +3,7 @@ print("=== IMPORTING IceCreameBot.api (sentinel) ===")
 import asyncio
 import time
 import os
+import requests
 from enum import Enum
 from typing import Optional, Dict, Any
 
@@ -35,7 +36,7 @@ from .CRUD.db import (
     log_weather,
 )
 from .MainChef.context_services import GlobalContextReader
-from .Sync.mongo_sync import process_outbox_once, hydrate_orders_from_mongo
+from .Sync.mongo_sync import process_outbox_once, hydrate_orders_from_mongo, hydrate_sessions_from_mongo
 
 from .tts_stt_api.piper_loader import synthesize, synthesize_to_file
 from .DB_Tools.cartTool import get_cart_with_total
@@ -126,6 +127,12 @@ class OrderCancelRequest(BaseModel):
     session_id: Optional[str] = None
     order_id: Optional[str] = None
 
+class SmsRequest(BaseModel):
+    phoneNumber: str
+    orderId: str
+    customerName: Optional[str] = "Customer"
+    total: float
+
 @app.post("/orders/cancel", response_class=JSONResponse)
 async def cancel_order(payload: OrderCancelRequest):
     """Cancel an order by order_id or session_id."""
@@ -190,6 +197,20 @@ async def _startup():
     except Exception as e:
         print(f"Order hydration skipped/failed: {e}")
     
+    # Hydrate sessions (mood, gender, age) from Mongo
+    try:
+        sessions = await hydrate_sessions_from_mongo(recent_hours=24)
+        count = 0
+        for s in sessions:
+            sid = s.get("session_id")
+            if sid:
+                # Populate in-memory store
+                _session_store.user_sessions[sid] = s
+                count += 1
+        print(f"Hydrated {count} sessions from Mongo")
+    except Exception as e:
+        print(f"Session hydration skipped/failed: {e}")
+
     # Start background outbox worker (orders only)
     async def _worker():
         while True:
@@ -538,6 +559,51 @@ async def update_order_status_endpoint(order_id: str, payload: OrderStatusUpdate
                     cache.decrease_stock(int(item_id), qty)
         
         return JSONResponse(updated)
+
+@app.post("/send-order-sms")
+async def send_order_sms(data: SmsRequest):
+    phone = data.phoneNumber
+    order_id = data.orderId
+    customer_name = data.customerName
+    total = data.total
+    
+    if not phone or not order_id:
+        raise HTTPException(status_code=400, detail="Missing required fields")
+    
+    # Format message
+    message = f"Order {order_id} confirmed for {customer_name}. Total: Rs {total:.2f}. Thank you!"
+    
+    # MSpace API call
+    mspace_payload = {
+        "version": "1.0",
+        "applicationId": os.getenv("MSPACE_APP_ID"),
+        "password": os.getenv("MSPACE_PASSWORD"),
+        "message": message,
+        "destinationAddresses": [f"tel:{phone}"],
+        "sourceAddress": "SofiaApp",
+        "deliveryStatusRequest": "0",
+        "encoding": "0"
+    }
+    
+    try:
+        # Run blocking request in threadpool
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(
+            None, 
+            lambda: requests.post("https://api.mspace.lk/sms/send", json=mspace_payload)
+        )
+        result = response.json()
+        
+        if result.get("statusCode") == "S1000":
+            return {
+                "success": True,
+                "messageId": result.get("requestId"),
+                "status": "sent"
+            }
+        else:
+            raise HTTPException(status_code=500, detail=f"SMS failed: {result}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:

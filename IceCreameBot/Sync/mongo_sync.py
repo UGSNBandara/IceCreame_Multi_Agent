@@ -236,6 +236,22 @@ async def hydrate_orders_from_mongo(upsert_orders, recent_days: int = 14):
         await upsert_orders(orders)
 
 
+async def hydrate_sessions_from_mongo(recent_hours: int = 24) -> List[Dict[str, Any]]:
+    """Hydrate session analytics (mood, gender, age) from MongoDB."""
+    db = await get_mongo()
+    if db is None:
+        return []
+    
+    from datetime import timedelta
+    since = datetime.now(timezone.utc) - timedelta(hours=recent_hours)
+    
+    # Fetch sessions updated recently
+    sessions: List[Dict[str, Any]] = await asyncio.to_thread(
+        lambda: list(db["session_analytics"].find({"updated_at": {"$gte": since.isoformat()}}))
+    )
+    return sessions
+
+
 async def direct_upsert_orders(docs: List[Dict[str, Any]]):
     db = await get_mongo()
     if db is None or not docs:
