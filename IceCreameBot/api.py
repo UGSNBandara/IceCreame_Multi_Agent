@@ -33,6 +33,7 @@ from .CRUD.db import (
     sqlite_upsert_orders,
     sqlite_get_session_order,
     upsert_session_analytics,
+    sqlite_upsert_session_analytics_batch,
     log_weather,
 )
 from .MainChef.context_services import GlobalContextReader
@@ -201,13 +202,18 @@ async def _startup():
     try:
         sessions = await hydrate_sessions_from_mongo(recent_hours=24)
         count = 0
-        for s in sessions:
-            sid = s.get("session_id")
-            if sid:
-                # Populate in-memory store
-                _session_store.user_sessions[sid] = s
-                count += 1
-        print(f"Hydrated {count} sessions from Mongo")
+        if sessions:
+            # 1. Populate in-memory store (for Agent)
+            for s in sessions:
+                sid = s.get("session_id")
+                if sid:
+                    _session_store.user_sessions[sid] = s
+                    count += 1
+            
+            # 2. Populate SQLite (for Admin Panel / Analytics API)
+            await sqlite_upsert_session_analytics_batch(sessions)
+            
+        print(f"Hydrated {count} sessions from Mongo to Memory & SQLite")
     except Exception as e:
         print(f"Session hydration skipped/failed: {e}")
 

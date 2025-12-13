@@ -144,6 +144,44 @@ async def init_db() -> None:
   )
   await conn.commit()
 
+async def sqlite_upsert_session_analytics_batch(docs: list[dict]):
+  """Batch upsert session analytics from Mongo hydration."""
+  conn = await get_db()
+  for d in docs:
+    sid = d.get("session_id")
+    if not sid: continue
+    
+    # Ensure emotion_counts is a string
+    ec = d.get("emotion_counts", {})
+    if isinstance(ec, dict):
+        ec = json.dumps(ec)
+    
+    await conn.execute(
+      """
+      INSERT INTO session_analytics(session_id, age_group, gender, weather_temp, weather_tod, emotion_counts, dominant_emotion, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(session_id) DO UPDATE SET
+        age_group = excluded.age_group,
+        gender = excluded.gender,
+        weather_temp = excluded.weather_temp,
+        weather_tod = excluded.weather_tod,
+        emotion_counts = excluded.emotion_counts,
+        dominant_emotion = excluded.dominant_emotion,
+        updated_at = excluded.updated_at
+      """,
+      (
+        sid,
+        d.get("age_group"),
+        d.get("gender"),
+        d.get("weather_temp"),
+        d.get("weather_tod"),
+        ec,
+        d.get("dominant_emotion"),
+        d.get("updated_at")
+      )
+    )
+  await conn.commit()
+
 # ---- Session→Order helpers ----
 async def sqlite_set_session_order(session_id: str, order_id: int) -> None:
   conn = await get_db()
