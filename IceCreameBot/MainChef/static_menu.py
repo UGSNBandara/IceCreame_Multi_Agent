@@ -3,26 +3,26 @@ from typing import List, Dict, Any
 
 STATIC_MENU: List[Dict[str, Any]] = [
     # Cones
-    {"id": 101, "name": "Pani Kaju Cone", "description": "Cashew mixed ice cream cone.", "price": 300.0, "category": "Cone", "flavor": "Cashew", "available_count": 50},
-    {"id": 102, "name": "Vanilla Cone", "description": "Classic vanilla cone.", "price": 300.0, "category": "Cone", "flavor": "Vanilla", "available_count": 50},
-    {"id": 103, "name": "Chocolate Cone", "description": "Rich chocolate cone.", "price": 300.0, "category": "Cone", "flavor": "Chocolate", "available_count": 50},
-    {"id": 104, "name": "Fruit & Nut Cone", "description": "Fruit and nut cone.", "price": 320.0, "category": "Cone", "flavor": "Fruit & Nut", "available_count": 50},
-
-    # Cups (60 ml)
-    {"id": 201, "name": "Chocolate Cup", "description": "60 ml chocolate ice cream cup.", "price": 280.0, "category": "Cup", "flavor": "Chocolate", "available_count": 60},
-    {"id": 202, "name": "Vanilla Cup", "description": "60 ml vanilla ice cream cup.", "price": 280.0, "category": "Cup", "flavor": "Vanilla", "available_count": 60},
-    {"id": 203, "name": "Fruit & Nut Cup", "description": "60 ml fruit and nut ice cream cup.", "price": 300.0, "category": "Cup", "flavor": "Fruit & Nut", "available_count": 60},
-    {"id": 204, "name": "Strawberry Cup", "description": "60 ml strawberry ice cream cup.", "price": 300.0, "category": "Cup", "flavor": "Strawberry", "available_count": 60},
+    {"id": 101, "name": "Chocolate Cone", "description": "Rich chocolate ice cream in a crispy cone.", "price": 150.0, "category": "Cone", "flavor": "Chocolate", "available_count": 50},
+    {"id": 102, "name": "Vanilla Cone", "description": "Classic creamy vanilla ice cream cone.", "price": 150.0, "category": "Cone", "flavor": "Vanilla", "available_count": 50},
+    {"id": 103, "name": "Crunch Cone", "description": "Crunchy cone with a special topping.", "price": 170.0, "category": "Cone", "flavor": "Crunch", "available_count": 50},
+    {"id": 104, "name": "Cappuccino Cone", "description": "Coffee flavored cappuccino ice cream cone.", "price": 190.0, "category": "Cone", "flavor": "Cappuccino", "available_count": 50},
+    {"id": 105, "name": "Blueberry Cone", "description": "Sweet and tangy blueberry ice cream cone.", "price": 190.0, "category": "Cone", "flavor": "Blueberry", "available_count": 50},
 
     # Sticks
-    {"id": 301, "name": "Faluda Stick", "description": "Faluda-flavored ice cream stick.", "price": 300.0, "category": "Stick", "flavor": "Faluda", "available_count": 40},
-    {"id": 302, "name": "Chocolate Stick", "description": "Chocolate ice cream stick.", "price": 300.0, "category": "Stick", "flavor": "Chocolate", "available_count": 40},
-    {"id": 303, "name": "Mango Stick", "description": "Mango ice cream stick.", "price": 300.0, "category": "Stick", "flavor": "Mango", "available_count": 40},
+    {"id": 301, "name": "Diul Stick", "description": "Traditional woodapple (Diul) flavored stick.", "price": 60.0, "category": "Stick", "flavor": "Diul", "available_count": 40},
+    {"id": 302, "name": "Traffic Light Stick", "description": "Colorful 3-flavor fruit ice stick.", "price": 60.0, "category": "Stick", "flavor": "Fruit", "available_count": 40},
+    {"id": 303, "name": "Faluda Stick", "description": "Rose and milk faluda flavored stick.", "price": 60.0, "category": "Stick", "flavor": "Faluda", "available_count": 40},
+    {"id": 304, "name": "Magic Choc Vanilla", "description": "Vanilla ice cream coated in chocolate shell.", "price": 150.0, "category": "Stick", "flavor": "Vanilla", "available_count": 40},
+    {"id": 305, "name": "Magic Choc Chocolate", "description": "Double chocolate delight on a stick.", "price": 150.0, "category": "Stick", "flavor": "Chocolate", "available_count": 40},
+    {"id": 306, "name": "Mango Stick", "description": "Refreshing mango fruit ice stick.", "price": 50.0, "category": "Stick", "flavor": "Mango", "available_count": 40},
+    {"id": 307, "name": "Berry Stick", "description": "Mixed berry fruit ice stick.", "price": 50.0, "category": "Stick", "flavor": "Berry", "available_count": 40},
+    {"id": 308, "name": "Fantastic Stick", "description": "Premium multi-layered ice cream stick.", "price": 150.0, "category": "Stick", "flavor": "Fantastic", "available_count": 40},
 ]
 
 # Active categories and flavors
-CATEGORIES = ["Cup", "Cone", "Stick"]
-FLAVORS = ["Vanilla", "Chocolate", "Strawberry", "Cashew", "Fruit & Nut", "Faluda", "Mango"]
+CATEGORIES = ["Cone", "Stick"]
+FLAVORS = ["Vanilla", "Chocolate", "Crunch", "Cappuccino", "Blueberry", "Diul", "Fruit", "Faluda", "Mango", "Berry", "Fantastic"]
 
 
 class StaticMenuCache:
